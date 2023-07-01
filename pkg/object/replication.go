@@ -22,9 +22,88 @@ import (
 	"fmt"
 	// "hash/fnv"
 	"io"
-	// "strings"
+	"bufio"
+	"strings"
+	"strconv"
+	"os"
+	"path"
 	// "time"
 )
+
+type LogType int64
+const (
+	Add LogType = iota
+	Delete
+)
+
+type LogEntry struct {
+	logType LogType
+	key string
+}
+
+const LogVer = 0
+
+type LogWriter struct {}
+
+func (_* LogWriter) serialize(entry LogEntry, w io.Writer) (int, error) {
+	s := fmt.Sprint(entry.logType) + " " + entry.key + "\n"
+	return io.WriteString(w, s)
+}
+
+type LogReader struct {}
+
+func (_* LogReader) deserialize(rd io.Reader) ([]LogEntry, error) {
+	entries := make([]LogEntry, 0)
+	r := bufio.NewReader(rd)
+	for line, err := r.ReadBytes('\n'); err == nil; {
+		if err != io.EOF {
+			return entries, err
+		}
+		s := string(line)
+		index := strings.Index(s, " ")
+		if index == -1 {
+			continue
+		}
+		t, err := strconv.Atoi(s[:index])
+		if err != nil {
+			continue
+		}
+		Type := LogType(t)
+		key := string(s[index + 1:])
+		entries = append(entries, LogEntry{Type, key})
+	}	
+	return entries, nil
+}
+
+type LogFile 
+
+type LogManager struct {
+	logMaxIdx uint64
+	logDir string
+}
+
+func (m *LogManager) FilePath(idx uint64) string {
+	return path.Join(m.logDir, fmt.Sprintf("%v.log", idx))
+}
+
+func (m *LogManager) NewLogFile() error {
+	idx := m.logMaxIdx
+	m.logMaxIdx += 1
+	path := m.FilePath(idx)
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	_, err = file.WriteString(fmt.Sprintf("%v\n", LogVer))
+	if err != nil {
+		return err
+	}
+	err = file.Sync()
+	if err != nil {
+		return err
+	}
+	return nil
+}
 
 type replication struct {
 	DefaultObjectStorage

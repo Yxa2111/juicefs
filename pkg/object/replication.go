@@ -24,16 +24,21 @@ import (
 	"io"
 	"bufio"
 	"strings"
-	"strconv"
 	"os"
 	"path"
-	// "time"
+	"sort"
+	"sync"
+	"time"
 )
 
-type LogType int64
+type LogType uint64
 const (
-	Add LogType = iota
+	Put LogType = iota
 	Delete
+)
+
+const (
+	MaxWrite uint64 = 100000
 )
 
 type LogEntry struct {
@@ -41,82 +46,373 @@ type LogEntry struct {
 	key string
 }
 
+func max(a uint64, b uint64) uint64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 const LogVer = 0
 
 type LogWriter struct {}
 
-func (_* LogWriter) serialize(entry LogEntry, w io.Writer) (int, error) {
+func (_* LogWriter) Serialize(entry LogEntry, w io.Writer) (int, error) {
 	s := fmt.Sprint(entry.logType) + " " + entry.key + "\n"
 	return io.WriteString(w, s)
 }
 
 type LogReader struct {}
 
-func (_* LogReader) deserialize(rd io.Reader) ([]LogEntry, error) {
+func (_* LogReader) Deserialize(r *bufio.Reader) ([]LogEntry, error) {
 	entries := make([]LogEntry, 0)
-	r := bufio.NewReader(rd)
-	for line, err := r.ReadBytes('\n'); err == nil; {
-		if err != io.EOF {
-			return entries, err
+	for {
+		line, err := r.ReadBytes('\n');
+		if err != nil {
+			if err != io.EOF {
+				return entries, err
+			}
+			return entries, nil
 		}
 		s := string(line)
-		index := strings.Index(s, " ")
-		if index == -1 {
-			continue
-		}
-		t, err := strconv.Atoi(s[:index])
+		var t LogType
+		var key string
+		_, err = fmt.Sscanf(s, "%v %v\n", &t, &key)
 		if err != nil {
+			logger.Errorf("Failed to deserialize log entry [%v]", s)
 			continue
 		}
-		Type := LogType(t)
-		key := string(s[index + 1:])
-		entries = append(entries, LogEntry{Type, key})
-	}	
-	return entries, nil
+		entries = append(entries, LogEntry{t, key})
+	}
 }
 
-type LogFile 
+type LogEntries struct {
+	entries []LogEntry
+}
+
+func (l *LogEntries) Entries() []LogEntry {
+	return l.entries
+}
+
+func (_ *LogEntries) Close(_ bool) error { return nil }
+
+func (_ *LogEntries) String() string { return "<current>" }
+
+type LogFile struct {
+	LogEntries
+	file *os.File
+	reader *bufio.Reader
+	path string
+	version uint64
+	index uint64
+}
+
+func (f *LogFile) Close(remove bool) error {
+	f.file.Close()
+	if remove {
+		return os.Remove(f.path)
+	}
+	return nil
+}
+
+func (f *LogFile) String() string { return f.path }
+
+type ReplayTask interface {
+	Entries() []LogEntry
+	Close(remove bool) error
+	String() string
+}
 
 type LogManager struct {
 	logMaxIdx uint64
 	logDir string
+	log *LogFile
+	written uint64
+	previous []ReplayTask
+	m *sync.Mutex
+	newFile *sync.Cond
+	maxWrite uint64
 }
 
 func (m *LogManager) FilePath(idx uint64) string {
 	return path.Join(m.logDir, fmt.Sprintf("%v.log", idx))
 }
 
+func NewLogManager(dir string, maxWrite uint64) (*LogManager, error) {
+	m := sync.Mutex{}
+	log := &LogManager{0, dir, nil, 0, make([]ReplayTask, 0), &m, sync.NewCond(&m), maxWrite}
+	err := log.ScanDir()
+	if err != nil {
+		return nil, err
+	}
+	err = log.NewLogFile()
+	if err != nil {
+		log.Close()
+		return nil, err
+	}
+	return log, nil
+}
+
+func (m *LogManager) ScanDir() error {
+	names, err := os.ReadDir(m.logDir)
+	if err != nil {
+		return err
+	}
+	logFiles := make([]*LogFile, 0)
+	for _, name := range names {
+		if name.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(name.Name(), ".log") {
+			continue
+		}
+		var idx uint64 = 0
+		_, err := fmt.Sscanf(name.Name(), "%v.log", &idx)
+		m.logMaxIdx = max(idx, m.logMaxIdx)
+		if err != nil {
+			continue
+		}
+		fp := path.Join(m.logDir, name.Name())
+		logFile, err := m.NewLogFileForRead(fp, idx)
+		if err != nil {
+			logger.Error("Failed to log file", fp, "error is", err)
+			continue
+		}
+		err = logFile.ReadAll(true)
+		if err != nil {
+			logger.Error("Failed to read log entry for log file", fp, "error is", err)
+		}
+		logFiles = append(logFiles, logFile)
+	}
+	sort.Slice(logFiles, func(i int, j int) bool {
+		return logFiles[i].index < logFiles[j].index
+	})
+	for _, item := range logFiles {
+		m.previous = append(m.previous, item)
+	}
+	return nil
+}
+
 func (m *LogManager) NewLogFile() error {
-	idx := m.logMaxIdx
 	m.logMaxIdx += 1
+	idx := m.logMaxIdx
 	path := m.FilePath(idx)
 	file, err := os.Create(path)
+	failback := func() {
+		file.Close()
+		os.Remove(path)
+	}
 	if err != nil {
+		failback()
 		return err
 	}
 	_, err = file.WriteString(fmt.Sprintf("%v\n", LogVer))
 	if err != nil {
+		failback()
 		return err
 	}
 	err = file.Sync()
 	if err != nil {
+		logger.Warn("Failed to sync file ", path)
+	}
+	if m.log != nil {
+		m.log.Close(false)
+		m.pushTask(m.log)
+	}
+	m.log = &LogFile{LogEntries{make([]LogEntry, 0)}, file, nil, path, LogVer, idx}
+	m.written = 0
+	return nil
+}
+
+func (m *LogManager) NewLogFileForRead(path string, idx uint64) (*LogFile, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	r := bufio.NewReader(file)
+	line, err := r.ReadBytes('\n')
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	version := uint64(0)
+	_, err = fmt.Sscanf(string(line), "%v\n", &version)
+	if err != nil {
+		file.Close()
+		return nil, err
+	}
+	return &LogFile{LogEntries{make([]LogEntry, 0)}, file, r, path, uint64(version), idx}, nil
+}
+
+func (m *LogManager) Put(key string) error {
+	return m.AppendLog(LogEntry{Put, key})
+}
+
+func (m *LogManager) Delete(key string) error {
+	return m.AppendLog(LogEntry{Delete, key})
+}
+
+func (m *LogManager) AppendLog(entry LogEntry) error {
+	_, err := m.log.AppendLog(entry)
+	m.written += 1
+	if err != nil {
 		return err
 	}
+	m.pushTask(&LogEntries{[]LogEntry{entry}})
+	if m.written >= m.maxWrite {
+		// push a empty task to remove file
+		m.log.entries = []LogEntry{}
+		err = m.NewLogFile()
+		if err != nil {
+			logger.Error("Failed to create new log file for write")
+		}
+	}
 	return nil
+}
+
+func (m *LogManager) NextFile() ReplayTask {
+	m.m.Lock()
+	defer m.m.Unlock()
+	for len(m.previous) == 0 {
+		m.newFile.Wait()
+	}
+	return m.previous[0]
+}
+
+func (m *LogManager) pushTask(t ReplayTask) {
+	m.m.Lock()
+	defer m.m.Unlock()
+	m.newFile.Signal()
+	m.previous = append(m.previous, t)
+}
+
+func (m *LogManager) Pop() {
+	m.m.Lock()
+	defer m.m.Unlock()
+	if len(m.previous) == 0 {
+		return
+	}
+	f := m.previous[0]
+	f.Close(true)
+	m.previous = m.previous[1:]
+}
+
+func (m *LogManager) Close() {
+	m.m.Lock()
+	defer m.m.Unlock()
+	for _, entry := range m.previous {
+		entry.Close(false)
+	}
+	if m.log != nil {
+		m.log.Close(false)
+	}
+}
+
+func (f *LogFile) AppendLog(entry LogEntry) (int, error) {
+	w := LogWriter{}
+	count, err := w.Serialize(entry, f.file)
+	if err != nil {
+		return count, err
+	}
+	return count, f.file.Sync()
+}
+
+func (f *LogFile) ReadAll(trim bool) error {
+	r := LogReader{}
+	entries, err := r.Deserialize(f.reader)
+	if err != nil {
+		return err
+	}
+	f.entries = entries
+	if trim {
+		f.trim()
+	}
+	return nil
+}
+
+func (f *LogFile) trim() {
+	m := make(map[string]interface{})
+	for _, entry := range f.entries {
+		if entry.logType == Put {
+			m[entry.key] = nil
+		}
+		if entry.logType == Delete {
+			delete(m, entry.key)
+		}
+	}
+
+	entries := make([]LogEntry, 0)
+	for _, entry := range f.entries {
+		if _, ok := m[entry.key]; ok {
+			entries = append(entries, entry)
+		}
+	}
+	f.entries = entries
+}
+
+type ReplicaManager struct {
+	primary ObjectStorage
+	slave []ObjectStorage
+	log *LogManager
+}
+
+func (r *ReplicaManager) run() {
+	for {
+		f := r.log.NextFile()
+		logger.Infof("start replaying log file %v", f.String())
+		for _, entry := range f.Entries() {
+			switch entry.logType {
+			case Put: {
+				var reader io.ReadCloser
+				var err error
+				for {
+					reader, err = r.primary.Get(entry.key, 0, -1)
+					if err != nil {
+						logger.Errorf("Failed to Get key %v in log file %v, retry later", entry.key, f.String())
+						time.Sleep(5 * time.Second)
+						continue
+					}
+					break
+				}
+				for _, slave := range r.slave {
+					for {
+						err = slave.Put(entry.key, reader)
+						if err != nil {
+							logger.Errorf("Failed to put key %v in log file %v to slave %v, retry later", entry.key, f.String(), slave.String())
+							time.Sleep(5 * time.Second)
+							continue
+						}
+						break
+					}
+				}
+			}
+			case Delete: {
+				for _, slave := range r.slave {
+					for {
+						err := slave.Delete(entry.key)
+						if err != nil {
+							logger.Errorf("Failed to delete key %v in log file %v to slave %v, retry later", entry.key, f.String(), slave.String())
+							time.Sleep(5 * time.Second)
+							continue
+						}
+						break
+					}
+				}
+			}
+			}
+		}
+		r.log.Pop()
+	}
+}
+
+func (r *ReplicaManager) Init() {
+	go r.run()
 }
 
 type replication struct {
 	DefaultObjectStorage
 	primary ObjectStorage
 	replica ReplicaManager
-}
-
-type ReplicaManager struct {
-	slave []ObjectStorage
-}
-
-func (r *ReplicaManager) Put(key string, body io.Reader) error {
-	return nil
 }
 
 func (s *replication) String() string {
@@ -155,7 +451,7 @@ func (s *replication) Put(key string, body io.Reader) error {
 	if err != nil {
 		return err
 	}
-	return s.replica.Put(key, body)
+	return s.replica.log.Put(key)
 }
 
 func (s *replication) Delete(key string) error {
@@ -291,9 +587,13 @@ func (s *replication) CompleteUpload(key string, uploadID string, parts []*Part)
 	return notSupported
 }
 
-func NewReplication(name, endpoint, ak, sk, token []string) (ObjectStorage, error) {
-	if len(endpoint) < 0 {
+func NewReplication(name, endpoint, ak, sk, token []string, logDir string) (ObjectStorage, error) {
+	if len(endpoint) == 0 {
 		return nil, notSupported
+	}
+	log, err := NewLogManager(logDir, MaxWrite)
+	if err != nil {
+		return nil, err
 	}
 	stores := make([]ObjectStorage, len(endpoint) - 1)
 	primary, err := CreateStorage(name[0], endpoint[0], ak[0], sk[0], token[0])
@@ -307,6 +607,7 @@ func NewReplication(name, endpoint, ak, sk, token []string) (ObjectStorage, erro
 			return nil, err
 		}
 	}
-	replica := ReplicaManager{slave: stores}
+	replica := ReplicaManager{primary, stores, log}
+	replica.Init()
 	return &replication{primary: primary, replica: replica}, nil
 }

@@ -107,12 +107,28 @@ type LogFile struct {
 	index uint64
 }
 
+func (f *LogFile) materialize() {
+	if f.reader == nil || len(f.entries) > 0 {
+		return
+	}
+	err := f.ReadAll(true)
+	if err != nil {
+		logger.Error("Failed to read log entry for log file", f.path, "error is", err)
+	}
+}
+
 func (f *LogFile) Close(remove bool) error {
 	f.file.Close()
+	f.reader = nil
 	if remove {
 		return os.Remove(f.path)
 	}
 	return nil
+}
+
+func (f *LogFile) Entries() []LogEntry {
+	f.materialize()
+	return f.entries
 }
 
 func (f *LogFile) String() string { return f.path }
@@ -177,10 +193,6 @@ func (m *LogManager) ScanDir() error {
 		if err != nil {
 			logger.Error("Failed to log file", fp, "error is", err)
 			continue
-		}
-		err = logFile.ReadAll(true)
-		if err != nil {
-			logger.Error("Failed to read log entry for log file", fp, "error is", err)
 		}
 		logFiles = append(logFiles, logFile)
 	}
@@ -327,6 +339,7 @@ func (f *LogFile) ReadAll(trim bool) error {
 	if trim {
 		f.trim()
 	}
+	f.Close(false)
 	return nil
 }
 

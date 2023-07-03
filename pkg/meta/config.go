@@ -44,6 +44,14 @@ type Config struct {
 	Subdir      string
 }
 
+type SlaveFormat struct {
+	Storage string
+	Bucket string
+	AccessKey        string `json:",omitempty"`
+	SecretKey        string `json:",omitempty"`
+	// SessionToken     string `json:",omitempty"`
+}
+
 type Format struct {
 	Name             string
 	UUID             string
@@ -64,6 +72,8 @@ type Format struct {
 	MetaVersion      int    `json:",omitempty"`
 	MinClientVersion string `json:",omitempty"`
 	MaxClientVersion string `json:",omitempty"`
+	Slave            []SlaveFormat `json:",omitempty"`
+	LogDir           string `json:",omitempty"`
 }
 
 func (f *Format) update(old *Format, force bool) error {

@@ -163,6 +163,30 @@ Details: https://juicefs.com/docs/community/quick_start_guide`,
 				Name:  "no-update",
 				Usage: "don't update existing volume",
 			},
+			&cli.StringSliceFlag{
+				Name: "slave-storage",
+				Usage: "object storage type (e.g. s3, gcs, oss, cos)",
+			},
+			&cli.StringSliceFlag{
+				Name:  "slave-bucket",
+				Usage: "the bucket URL of object storage to store data",
+			},
+			&cli.StringSliceFlag{
+				Name:  "slave-access-key",
+				Usage: "access key for object storage (env ACCESS_KEY)",
+			},
+			&cli.StringSliceFlag{
+				Name:  "slave-secret-key",
+				Usage: "secret key for object storage (env SECRET_KEY)",
+			},
+			&cli.StringFlag{
+				Name: "slave-logdir",
+				Usage: "slave log dir",
+			},
+			// &cli.StringSliceFlag{
+			// 	Name:  "slave-session-token",
+			// 	Usage: "session token for object storage",
+			// },
 		},
 	}
 }
@@ -207,7 +231,12 @@ func createStorage(format meta.Format) (object.ObjectStorage, error) {
 		}
 	}
 
-	if format.Shards > 1 {
+	logger.Info(format)
+
+	if len(format.Slave) > 0 {
+		blob, err = object.NewReplication(strings.ToLower(format.Storage), format.Bucket, format.AccessKey, format.SecretKey, format.SessionToken, format.Slave, format.LogDir)
+		logger.Info(blob, err)
+	} else if format.Shards > 1 {
 		blob, err = object.NewSharded(strings.ToLower(format.Storage), format.Bucket, format.AccessKey, format.SecretKey, format.SessionToken, format.Shards)
 	} else {
 		blob, err = object.CreateStorage(strings.ToLower(format.Storage), format.Bucket, format.AccessKey, format.SecretKey, format.SessionToken)
@@ -342,6 +371,11 @@ func format(c *cli.Context) error {
 			return nil
 		}
 		format.Name = name
+		slaveStorage := make([]string, 0)
+		slaveBucket := make([]string, 0)
+		slaveAccessKey := make([]string, 0)
+		slaveSecretKey := make([]string, 0)
+		slave := make([]meta.SlaveFormat, 0)
 		for _, flag := range c.LocalFlagNames() {
 			switch flag {
 			case "capacity":
@@ -378,9 +412,51 @@ func format(c *cli.Context) error {
 				format.Storage = c.String(flag)
 			case "encrypt-rsa-key":
 				logger.Warnf("Flag %s is ignored since it cannot be updated", flag)
+			case "slave-storage":
+				slaveStorage = c.StringSlice(flag)
+			case "slave-bucket":
+				slaveBucket = c.StringSlice(flag)
+			case "slave-access-key":
+				slaveAccessKey = c.StringSlice(flag)
+			case "slave-secret-key":
+				slaveSecretKey = c.StringSlice(flag)
+			case "slave-logdir":
+				format.LogDir = c.String(flag)
+				logger.Infof("key %v=%v", flag, c.String(flag))
 			}
 		}
+		for i := 0; i < len(slaveStorage) - 1; i += 1 {
+			slave = append(slave, meta.SlaveFormat{slaveStorage[i], slaveBucket[i], slaveAccessKey[i], slaveSecretKey[i]})
+		}
+		format.Slave = slave
 	} else if strings.HasPrefix(err.Error(), "database is not formatted") {
+		slaveStorage := make([]string, 0)
+		slaveBucket := make([]string, 0)
+		slaveAccessKey := make([]string, 0)
+		slaveSecretKey := make([]string, 0)
+		slave := make([]meta.SlaveFormat, 0)
+		for _, flag := range c.LocalFlagNames() {
+			switch flag {
+			case "slave-storage":
+				slaveStorage = c.StringSlice(flag)
+			case "slave-bucket":
+				slaveBucket = c.StringSlice(flag)
+			case "slave-access-key":
+				slaveAccessKey = c.StringSlice(flag)
+			case "slave-secret-key":
+				slaveSecretKey = c.StringSlice(flag)
+			}
+		}
+		// if len(slaveStorage) != len(slaveBucket) || len(slaveBucket) != len(slaveAccessKey) || len(slaveAccessKey) != len(slaveSecretKey) {
+		// 	log.Fatalf("6")
+		// }
+		for i := 0; i < len(slaveStorage); i += 1 {
+			f := func(v []string, i int) string { if i >= len(v) { return "" } else { return v[i] } }
+			logger.Info(f(slaveStorage, i))
+			slave = append(slave, meta.SlaveFormat{f(slaveStorage, i), f(slaveBucket, i),
+				f(slaveAccessKey, i), f(slaveSecretKey, i)})
+		}
+		logger.Info(slave)
 		create = true
 		format = &meta.Format{
 			Name:         name,
@@ -399,6 +475,8 @@ func format(c *cli.Context) error {
 			Compression:  c.String("compress"),
 			TrashDays:    c.Int("trash-days"),
 			MetaVersion:  meta.MaxVersion,
+			LogDir: c.String("slave-logdir"),
+			Slave: slave,
 		}
 		if format.AccessKey == "" && os.Getenv("ACCESS_KEY") != "" {
 			format.AccessKey = os.Getenv("ACCESS_KEY")
@@ -428,6 +506,7 @@ func format(c *cli.Context) error {
 	}
 
 	blob, err := createStorage(*format)
+	logger.Info(blob, err)
 	if err != nil {
 		logger.Fatalf("object storage: %s", err)
 	}

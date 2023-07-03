@@ -21,14 +21,16 @@ import (
 	// "errors"
 	"fmt"
 	// "hash/fnv"
-	"io"
 	"bufio"
-	"strings"
+	"io"
 	"os"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/juicedata/juicefs/pkg/meta"
 )
 
 type LogType uint64
@@ -170,6 +172,10 @@ func NewLogManager(dir string, maxWrite uint64) (*LogManager, error) {
 }
 
 func (m *LogManager) ScanDir() error {
+	err := os.MkdirAll(m.logDir, os.ModePerm)
+	if err != nil {
+		return err
+	}
 	names, err := os.ReadDir(m.logDir)
 	if err != nil {
 		return err
@@ -389,6 +395,7 @@ func (r *ReplicaManager) run() {
 				}
 				for _, slave := range r.slave {
 					for {
+						logger.Info(slave, entry, reader)
 						err = slave.Put(entry.key, reader)
 						if err != nil {
 							logger.Errorf("Failed to put key %v in log file %v to slave %v, retry later", entry.key, f.String(), slave.String())
@@ -436,6 +443,7 @@ func (s *replication) Create() error {
 	if err := s.primary.Create(); err != nil {
 		return err
 	}
+	logger.Info(s.replica, s.primary)
 	for _, o := range s.replica.slave {
 		if err := o.Create(); err != nil {
 			return err
@@ -468,7 +476,11 @@ func (s *replication) Put(key string, body io.Reader) error {
 }
 
 func (s *replication) Delete(key string) error {
-	return s.primary.Delete(key)
+	err := s.primary.Delete(key)
+	if err != nil {
+		return err
+	}
+	return s.replica.log.Delete(key)
 }
 
 // const maxResults = 10000
@@ -600,26 +612,27 @@ func (s *replication) CompleteUpload(key string, uploadID string, parts []*Part)
 	return notSupported
 }
 
-func NewReplication(name, endpoint, ak, sk, token []string, logDir string) (ObjectStorage, error) {
-	if len(endpoint) == 0 {
+func NewReplication(name, endpoint, ak, sk, token string, slave []meta.SlaveFormat, logDir string) (ObjectStorage, error) {
+	if len(slave) == 0 || len(logDir) == 0 {
 		return nil, notSupported
 	}
 	log, err := NewLogManager(logDir, MaxWrite)
 	if err != nil {
 		return nil, err
 	}
-	stores := make([]ObjectStorage, len(endpoint) - 1)
-	primary, err := CreateStorage(name[0], endpoint[0], ak[0], sk[0], token[0])
+	stores := make([]ObjectStorage, len(slave))
+	primary, err := CreateStorage(name, endpoint, ak, sk, token)
 	if err != nil {
 		return nil, err
 	}
 
-	for i := 1; i < len(endpoint); i += 1 {
-		stores[i], err = CreateStorage(name[i], endpoint[i], ak[i], sk[i], token[i])
+	for i := 0; i < len(slave); i += 1 {
+		stores[i], err = CreateStorage(slave[i].Storage, slave[i].Bucket, slave[i].AccessKey, slave[i].SecretKey, "")
 		if err != nil {
 			return nil, err
 		}
 	}
+	logger.Info(slave, stores)
 	replica := ReplicaManager{primary, stores, log}
 	replica.Init()
 	return &replication{primary: primary, replica: replica}, nil

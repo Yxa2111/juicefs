@@ -19,7 +19,9 @@ package object
 import (
 	// "container/heap"
 	// "errors"
+	"errors"
 	"fmt"
+
 	// "hash/fnv"
 	"bufio"
 	"io"
@@ -384,14 +386,29 @@ func (r *ReplicaManager) run() {
 			case Put: {
 				var reader io.ReadCloser
 				var err error
+				skipKey := false
 				for {
+					_, err = r.primary.Head(entry.key)
+					if errors.Is(err, os.ErrNotExist) {
+						logger.Warnf("Key %v not exist, skip...", entry.key)
+						skipKey = true
+						break
+					}
+					if err != nil {
+						logger.Errorf("Failed to Head key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
+						time.Sleep(5 * time.Second)
+						continue
+					}
 					reader, err = r.primary.Get(entry.key, 0, -1)
 					if err != nil {
-						logger.Errorf("Failed to Get key %v in log file %v, retry later", entry.key, f.String())
+						logger.Errorf("Failed to Get key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
 						time.Sleep(5 * time.Second)
 						continue
 					}
 					break
+				}
+				if skipKey {
+					continue
 				}
 				for _, slave := range r.slave {
 					for {
@@ -468,19 +485,20 @@ func (s *replication) Get(key string, off, limit int64) (io.ReadCloser, error) {
 }
 
 func (s *replication) Put(key string, body io.Reader) error {
-	err := s.primary.Put(key, body)
+	// write to disk first
+	err := s.replica.log.Put(key)
 	if err != nil {
 		return err
 	}
-	return s.replica.log.Put(key)
+	return s.primary.Put(key, body)
 }
 
 func (s *replication) Delete(key string) error {
-	err := s.primary.Delete(key)
+	err := s.replica.log.Delete(key)
 	if err != nil {
 		return err
 	}
-	return s.replica.log.Delete(key)
+	return s.primary.Delete(key)
 }
 
 // const maxResults = 10000

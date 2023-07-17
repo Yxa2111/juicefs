@@ -42,7 +42,7 @@ const (
 )
 
 const (
-	MaxWrite uint64 = 100000
+	MaxWrite uint64 = 1000
 )
 
 type LogEntry struct {
@@ -136,6 +136,8 @@ func (f *LogFile) Entries() []LogEntry {
 }
 
 func (f *LogFile) String() string { return f.path }
+
+type Callback func()
 
 type ReplayTask interface {
 	Entries() []LogEntry
@@ -236,6 +238,7 @@ func (m *LogManager) NewLogFile() error {
 		logger.Warn("Failed to sync file ", path)
 	}
 	if m.log != nil {
+		// remove log file in Pop()
 		m.log.Close(false)
 		m.pushTask(m.log)
 	}
@@ -264,30 +267,31 @@ func (m *LogManager) NewLogFileForRead(path string, idx uint64) (*LogFile, error
 	return &LogFile{LogEntries{make([]LogEntry, 0)}, file, r, path, uint64(version), idx}, nil
 }
 
-func (m *LogManager) Put(key string) error {
+func (m *LogManager) Put(key string) (Callback, error) {
 	return m.AppendLog(LogEntry{Put, key})
 }
 
-func (m *LogManager) Delete(key string) error {
+func (m *LogManager) Delete(key string) (Callback, error) {
 	return m.AppendLog(LogEntry{Delete, key})
 }
 
-func (m *LogManager) AppendLog(entry LogEntry) error {
+func (m *LogManager) AppendLog(entry LogEntry) (Callback, error) {
 	_, err := m.log.AppendLog(entry)
 	m.written += 1
 	if err != nil {
-		return err
+		return nil, err
 	}
-	m.pushTask(&LogEntries{[]LogEntry{entry}})
-	if m.written >= m.maxWrite {
-		// push a empty task to remove file
-		m.log.entries = []LogEntry{}
-		err = m.NewLogFile()
-		if err != nil {
-			logger.Error("Failed to create new log file for write")
+	return func() {
+		m.pushTask(&LogEntries{[]LogEntry{entry}})
+		if m.written >= m.maxWrite {
+			// push a empty task to remove file
+			m.log.entries = []LogEntry{}
+			err = m.NewLogFile()
+			if err != nil {
+				logger.Error("Failed to create new log file for write")
+			}
 		}
-	}
-	return nil
+	}, nil
 }
 
 func (m *LogManager) NextFile() ReplayTask {
@@ -387,8 +391,9 @@ func (r *ReplicaManager) run() {
 				var reader io.ReadCloser
 				var err error
 				skipKey := false
+				var info Object
 				for {
-					_, err = r.primary.Head(entry.key)
+					info, err = r.primary.Head(entry.key)
 					if errors.Is(err, os.ErrNotExist) {
 						logger.Warnf("Key %v not exist, skip...", entry.key)
 						skipKey = true
@@ -412,20 +417,40 @@ func (r *ReplicaManager) run() {
 				}
 				for _, slave := range r.slave {
 					for {
-						logger.Info(slave, entry, reader)
+						logger.Infof("put key %v to slave %v value size %v", entry.key, slave.String(), info.Size())
 						err = slave.Put(entry.key, reader)
 						if err != nil {
 							logger.Errorf("Failed to put key %v in log file %v to slave %v, retry later", entry.key, f.String(), slave.String())
 							time.Sleep(5 * time.Second)
 							continue
 						}
+						logger.Infof("put key %v to slave %v finished", entry.key, slave.String())
 						break
 					}
 				}
 			}
 			case Delete: {
+				skipKey := false
+				for {
+					_, err := r.primary.Head(entry.key)
+					if errors.Is(err, os.ErrNotExist) {
+						break
+					}
+					if err != nil {
+						logger.Errorf("Failed to Head key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
+						time.Sleep(5 * time.Second)
+						continue
+					}
+					logger.Warnf("Key %v exist, skip...", entry.key)
+					skipKey = true
+					break
+				}
+				if skipKey {
+					continue
+				}
 				for _, slave := range r.slave {
 					for {
+						logger.Infof("delete key %v to slave %v", entry.key, slave.String())
 						err := slave.Delete(entry.key)
 						if err != nil {
 							logger.Errorf("Failed to delete key %v in log file %v to slave %v, retry later", entry.key, f.String(), slave.String())
@@ -450,6 +475,7 @@ type replication struct {
 	DefaultObjectStorage
 	primary ObjectStorage
 	replica ReplicaManager
+	m sync.Mutex
 }
 
 func (s *replication) String() string {
@@ -485,20 +511,36 @@ func (s *replication) Get(key string, off, limit int64) (io.ReadCloser, error) {
 }
 
 func (s *replication) Put(key string, body io.Reader) error {
+	s.m.Lock()
+	defer s.m.Unlock()
 	// write to disk first
-	err := s.replica.log.Put(key)
+	cb, err := s.replica.log.Put(key)
 	if err != nil {
 		return err
 	}
-	return s.primary.Put(key, body)
+	err = s.primary.Put(key, body)
+	// todo: add txn id and waiting queue to reduce lock...
+	if err != nil {
+		// todo: add log rollback logic in later...
+		return err
+	}
+	cb()
+	return nil
 }
 
 func (s *replication) Delete(key string) error {
-	err := s.replica.log.Delete(key)
+	s.m.Lock()
+	defer s.m.Unlock()
+	cb, err := s.replica.log.Delete(key)
 	if err != nil {
 		return err
 	}
-	return s.primary.Delete(key)
+	err = s.primary.Delete(key)
+	if err != nil {
+		return err
+	}
+	cb()
+	return nil
 }
 
 // const maxResults = 10000
@@ -607,7 +649,7 @@ func (s *replication) ListAll(prefix, marker string) (<-chan Object, error) {
 	// 	close(out)
 	// }()
 	// return out, nil
-	return nil, notSupported
+	return s.primary.ListAll(prefix, marker)
 }
 
 func (s *replication) CreateMultipartUpload(key string) (*MultipartUpload, error) {

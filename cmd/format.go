@@ -425,8 +425,10 @@ func format(c *cli.Context) error {
 				logger.Infof("key %v=%v", flag, c.String(flag))
 			}
 		}
-		for i := 0; i < len(slaveStorage) - 1; i += 1 {
-			slave = append(slave, meta.SlaveFormat{slaveStorage[i], slaveBucket[i], slaveAccessKey[i], slaveSecretKey[i]})
+		for i := 0; i < len(slaveStorage); i += 1 {
+			f := func(v []string, i int) string { if i >= len(v) { return "" } else { return v[i] } }
+			slave = append(slave, meta.SlaveFormat{f(slaveStorage, i), f(slaveBucket, i),
+				f(slaveAccessKey, i), f(slaveSecretKey, i)})
 		}
 		format.Slave = slave
 	} else if strings.HasPrefix(err.Error(), "database is not formatted") {
@@ -452,7 +454,6 @@ func format(c *cli.Context) error {
 		// }
 		for i := 0; i < len(slaveStorage); i += 1 {
 			f := func(v []string, i int) string { if i >= len(v) { return "" } else { return v[i] } }
-			logger.Info(f(slaveStorage, i))
 			slave = append(slave, meta.SlaveFormat{f(slaveStorage, i), f(slaveBucket, i),
 				f(slaveAccessKey, i), f(slaveSecretKey, i)})
 		}
@@ -502,6 +503,21 @@ func format(c *cli.Context) error {
 		}
 		if format.Storage == "file" {
 			format.Bucket += "/"
+		}
+	}
+	// addSuffix
+	for i := 0; i < len(format.Slave); i += 1 {
+		slave := &format.Slave[i]
+		if slave.Storage == "file" || slave.Storage == "sqlite3" {
+			p, err := filepath.Abs(slave.Bucket)
+			if err == nil {
+				slave.Bucket = p
+			} else {
+				logger.Fatalf("Failed to get absolute path of %s: %s", format.Bucket, err)
+			}
+			if slave.Storage == "file" {
+				slave.Bucket += "/"
+			}
 		}
 	}
 

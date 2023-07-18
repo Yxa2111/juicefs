@@ -3,7 +3,7 @@ name: docker-image-build
 on:
   push:
     branches:
-      - 'release1.0-yxaa'
+      - 'release-1.0-yxaa'
 
 jobs:
   docker:

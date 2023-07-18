@@ -420,7 +420,7 @@ func (r *ReplicaManager) run() {
 						logger.Infof("put key %v to slave %v value size %v", entry.key, slave.String(), info.Size())
 						err = slave.Put(entry.key, reader)
 						if err != nil {
-							logger.Errorf("Failed to put key %v in log file %v to slave %v, retry later", entry.key, f.String(), slave.String())
+							logger.Errorf("Failed to put key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
 							time.Sleep(5 * time.Second)
 							continue
 						}
@@ -453,7 +453,7 @@ func (r *ReplicaManager) run() {
 						logger.Infof("delete key %v to slave %v", entry.key, slave.String())
 						err := slave.Delete(entry.key)
 						if err != nil {
-							logger.Errorf("Failed to delete key %v in log file %v to slave %v, retry later", entry.key, f.String(), slave.String())
+							logger.Errorf("Failed to delete key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
 							time.Sleep(5 * time.Second)
 							continue
 						}

@@ -22,7 +22,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
 
 	// "hash/fnv"
 	"bufio"

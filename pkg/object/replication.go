@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/juicedata/juicefs/pkg/meta"
+	"github.com/juicedata/juicefs/pkg/utils"
 )
 
 type LogType uint64
@@ -418,7 +419,7 @@ func (r *ReplicaManager) run() {
 				for _, slave := range r.slave {
 					for {
 						logger.Infof("put key %v to slave %v value size %v", entry.key, slave.String(), info.Size())
-						err = slave.Put(entry.key, reader)
+						err = utils.WithTimeout(func() error { return slave.Put(entry.key, reader) }, 60 * time.Second)
 						if err != nil {
 							logger.Errorf("Failed to put key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
 							time.Sleep(5 * time.Second)
@@ -451,7 +452,7 @@ func (r *ReplicaManager) run() {
 				for _, slave := range r.slave {
 					for {
 						logger.Infof("delete key %v to slave %v", entry.key, slave.String())
-						err := slave.Delete(entry.key)
+						err := utils.WithTimeout(func() error { return slave.Delete(entry.key) }, 60 * time.Second)
 						if err != nil {
 							logger.Errorf("Failed to delete key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
 							time.Sleep(5 * time.Second)

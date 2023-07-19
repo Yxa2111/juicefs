@@ -19,8 +19,10 @@ package object
 import (
 	// "container/heap"
 	// "errors"
+	"bytes"
 	"errors"
 	"fmt"
+	"io/ioutil"
 
 	// "hash/fnv"
 	"bufio"
@@ -393,6 +395,7 @@ func (r *ReplicaManager) run() {
 				var err error
 				skipKey := false
 				var info Object
+				var buf []byte
 				for {
 					info, err = r.primary.Head(entry.key)
 					if errors.Is(err, os.ErrNotExist) {
@@ -411,6 +414,12 @@ func (r *ReplicaManager) run() {
 						time.Sleep(5 * time.Second)
 						continue
 					}
+					buf, err = io.ReadAll(reader)
+					if err != nil || len(buf) == 0 {
+						logger.Errorf("Failed to Get key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
+						time.Sleep(5 * time.Second)
+						continue
+					}
 					break
 				}
 				if skipKey {
@@ -419,7 +428,7 @@ func (r *ReplicaManager) run() {
 				for _, slave := range r.slave {
 					for {
 						logger.Infof("put key %v to slave %v value size %v", entry.key, slave.String(), info.Size())
-						err = utils.WithTimeout(func() error { return slave.Put(entry.key, reader) }, 60 * time.Second)
+						err = utils.WithTimeout(func() error { return slave.Put(entry.key, bytes.NewReader(buf)) }, 60 * time.Second)
 						if err != nil {
 							logger.Errorf("Failed to put key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
 							time.Sleep(5 * time.Second)

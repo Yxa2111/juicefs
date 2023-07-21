@@ -164,7 +164,7 @@ Details: https://juicefs.com/docs/community/quick_start_guide`,
 				Usage: "don't update existing volume",
 			},
 			&cli.StringSliceFlag{
-				Name: "slave-storage",
+				Name:  "slave-storage",
 				Usage: "object storage type (e.g. s3, gcs, oss, cos)",
 			},
 			&cli.StringSliceFlag{
@@ -180,7 +180,7 @@ Details: https://juicefs.com/docs/community/quick_start_guide`,
 				Usage: "secret key for object storage (env SECRET_KEY)",
 			},
 			&cli.StringFlag{
-				Name: "slave-logdir",
+				Name:  "slave-logdir",
 				Usage: "slave log dir",
 			},
 			// &cli.StringSliceFlag{
@@ -426,7 +426,13 @@ func format(c *cli.Context) error {
 			}
 		}
 		for i := 0; i < len(slaveStorage); i += 1 {
-			f := func(v []string, i int) string { if i >= len(v) { return "" } else { return v[i] } }
+			f := func(v []string, i int) string {
+				if i >= len(v) {
+					return ""
+				} else {
+					return v[i]
+				}
+			}
 			slave = append(slave, meta.SlaveFormat{f(slaveStorage, i), f(slaveBucket, i),
 				f(slaveAccessKey, i), f(slaveSecretKey, i)})
 		}
@@ -453,7 +459,13 @@ func format(c *cli.Context) error {
 		// 	log.Fatalf("6")
 		// }
 		for i := 0; i < len(slaveStorage); i += 1 {
-			f := func(v []string, i int) string { if i >= len(v) { return "" } else { return v[i] } }
+			f := func(v []string, i int) string {
+				if i >= len(v) {
+					return ""
+				} else {
+					return v[i]
+				}
+			}
 			slave = append(slave, meta.SlaveFormat{f(slaveStorage, i), f(slaveBucket, i),
 				f(slaveAccessKey, i), f(slaveSecretKey, i)})
 		}
@@ -476,8 +488,8 @@ func format(c *cli.Context) error {
 			Compression:  c.String("compress"),
 			TrashDays:    c.Int("trash-days"),
 			MetaVersion:  meta.MaxVersion,
-			LogDir: c.String("slave-logdir"),
-			Slave: slave,
+			LogDir:       c.String("slave-logdir"),
+			Slave:        slave,
 		}
 		if format.AccessKey == "" && os.Getenv("ACCESS_KEY") != "" {
 			format.AccessKey = os.Getenv("ACCESS_KEY")

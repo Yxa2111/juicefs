@@ -432,6 +432,10 @@ func mount(c *cli.Context) error {
 
 	chunkConf := getChunkConf(c, format)
 	store := chunk.NewCachedStore(blob, *chunkConf, registerer)
+	r, ok := blob.(*object.Replication)
+	if ok {
+		r.Init(registerer)
+	}
 	registerMetaMsg(metaCli, store, chunkConf)
 
 	vfsConf := getVfsConf(c, metaConf, format, chunkConf)

@@ -35,9 +35,11 @@ import (
 
 	"github.com/juicedata/juicefs/pkg/meta"
 	"github.com/juicedata/juicefs/pkg/utils"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 type LogType uint64
+
 const (
 	Put LogType = iota
 	Delete
@@ -49,7 +51,7 @@ const (
 
 type LogEntry struct {
 	logType LogType
-	key string
+	key     string
 }
 
 func max(a uint64, b uint64) uint64 {
@@ -61,19 +63,19 @@ func max(a uint64, b uint64) uint64 {
 
 const LogVer = 0
 
-type LogWriter struct {}
+type LogWriter struct{}
 
-func (_* LogWriter) Serialize(entry LogEntry, w io.Writer) (int, error) {
+func (_ *LogWriter) Serialize(entry LogEntry, w io.Writer) (int, error) {
 	s := fmt.Sprint(entry.logType) + " " + entry.key + "\n"
 	return io.WriteString(w, s)
 }
 
-type LogReader struct {}
+type LogReader struct{}
 
-func (_* LogReader) Deserialize(r *bufio.Reader) ([]LogEntry, error) {
+func (_ *LogReader) Deserialize(r *bufio.Reader) ([]LogEntry, error) {
 	entries := make([]LogEntry, 0)
 	for {
-		line, err := r.ReadBytes('\n');
+		line, err := r.ReadBytes('\n')
 		if err != nil {
 			if err != io.EOF {
 				return entries, err
@@ -106,11 +108,11 @@ func (_ *LogEntries) String() string { return "<current>" }
 
 type LogFile struct {
 	LogEntries
-	file *os.File
-	reader *bufio.Reader
-	path string
+	file    *os.File
+	reader  *bufio.Reader
+	path    string
 	version uint64
-	index uint64
+	index   uint64
 }
 
 func (f *LogFile) materialize() {
@@ -149,13 +151,13 @@ type ReplayTask interface {
 
 type LogManager struct {
 	logMaxIdx uint64
-	logDir string
-	log *LogFile
-	written uint64
-	previous []ReplayTask
-	m *sync.Mutex
-	newFile *sync.Cond
-	maxWrite uint64
+	logDir    string
+	log       *LogFile
+	written   uint64
+	previous  []ReplayTask
+	m         *sync.Mutex
+	newFile   *sync.Cond
+	maxWrite  uint64
 }
 
 func (m *LogManager) FilePath(idx uint64) string {
@@ -379,8 +381,9 @@ func (f *LogFile) trim() {
 
 type ReplicaManager struct {
 	primary ObjectStorage
-	slave []ObjectStorage
-	log *LogManager
+	slave   []ObjectStorage
+	log     *LogManager
+	waitingItem prometheus.Counter
 }
 
 func (r *ReplicaManager) run() {
@@ -389,87 +392,89 @@ func (r *ReplicaManager) run() {
 		logger.Infof("start replaying log file %v", f.String())
 		for _, entry := range f.Entries() {
 			switch entry.logType {
-			case Put: {
-				var reader io.ReadCloser
-				var err error
-				skipKey := false
-				var info Object
-				var buf []byte
-				for {
-					info, err = r.primary.Head(entry.key)
-					if errors.Is(err, os.ErrNotExist) {
-						logger.Warnf("Key %v not exist, skip...", entry.key)
+			case Put:
+				{
+					var reader io.ReadCloser
+					var err error
+					skipKey := false
+					var info Object
+					var buf []byte
+					for {
+						info, err = r.primary.Head(entry.key)
+						if errors.Is(err, os.ErrNotExist) {
+							logger.Warnf("Key %v not exist, skip...", entry.key)
+							skipKey = true
+							break
+						}
+						if err != nil {
+							logger.Errorf("Failed to Head key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
+							time.Sleep(5 * time.Second)
+							continue
+						}
+						reader, err = r.primary.Get(entry.key, 0, -1)
+						if err != nil {
+							logger.Errorf("Failed to Get key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
+							time.Sleep(5 * time.Second)
+							continue
+						}
+						buf, err = io.ReadAll(reader)
+						if err != nil || len(buf) == 0 {
+							logger.Errorf("Failed to Get key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
+							time.Sleep(5 * time.Second)
+							continue
+						}
+						break
+					}
+					if skipKey {
+						continue
+					}
+					for _, slave := range r.slave {
+						for {
+							logger.Infof("put key %v to slave %v value size %v", entry.key, slave.String(), info.Size())
+							err = utils.WithTimeout(func() error { return slave.Put(entry.key, bytes.NewReader(buf)) }, 60*time.Second)
+							if err != nil {
+								logger.Errorf("Failed to put key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
+								time.Sleep(5 * time.Second)
+								continue
+							}
+							logger.Infof("put key %v to slave %v finished", entry.key, slave.String())
+							break
+						}
+					}
+				}
+			case Delete:
+				{
+					skipKey := false
+					for {
+						_, err := r.primary.Head(entry.key)
+						if errors.Is(err, os.ErrNotExist) {
+							break
+						}
+						if err != nil {
+							logger.Errorf("Failed to Head key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
+							time.Sleep(5 * time.Second)
+							continue
+						}
+						logger.Warnf("Key %v exist, skip...", entry.key)
 						skipKey = true
 						break
 					}
-					if err != nil {
-						logger.Errorf("Failed to Head key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
-						time.Sleep(5 * time.Second)
+					if skipKey {
 						continue
 					}
-					reader, err = r.primary.Get(entry.key, 0, -1)
-					if err != nil {
-						logger.Errorf("Failed to Get key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
-						time.Sleep(5 * time.Second)
-						continue
-					}
-					buf, err = io.ReadAll(reader)
-					if err != nil || len(buf) == 0 {
-						logger.Errorf("Failed to Get key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
-						time.Sleep(5 * time.Second)
-						continue
-					}
-					break
-				}
-				if skipKey {
-					continue
-				}
-				for _, slave := range r.slave {
-					for {
-						logger.Infof("put key %v to slave %v value size %v", entry.key, slave.String(), info.Size())
-						err = utils.WithTimeout(func() error { return slave.Put(entry.key, bytes.NewReader(buf)) }, 60 * time.Second)
-						if err != nil {
-							logger.Errorf("Failed to put key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
-							time.Sleep(5 * time.Second)
-							continue
+					for _, slave := range r.slave {
+						for {
+							logger.Infof("delete key %v to slave %v", entry.key, slave.String())
+							err := utils.WithTimeout(func() error { return slave.Delete(entry.key) }, 60*time.Second)
+							if err != nil {
+								logger.Errorf("Failed to delete key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
+								time.Sleep(5 * time.Second)
+								continue
+							}
+							break
 						}
-						logger.Infof("put key %v to slave %v finished", entry.key, slave.String())
-						break
 					}
 				}
-			}
-			case Delete: {
-				skipKey := false
-				for {
-					_, err := r.primary.Head(entry.key)
-					if errors.Is(err, os.ErrNotExist) {
-						break
-					}
-					if err != nil {
-						logger.Errorf("Failed to Head key %v in log file %v with error %v, retry later", entry.key, f.String(), err)
-						time.Sleep(5 * time.Second)
-						continue
-					}
-					logger.Warnf("Key %v exist, skip...", entry.key)
-					skipKey = true
-					break
-				}
-				if skipKey {
-					continue
-				}
-				for _, slave := range r.slave {
-					for {
-						logger.Infof("delete key %v to slave %v", entry.key, slave.String())
-						err := utils.WithTimeout(func() error { return slave.Delete(entry.key) }, 60 * time.Second)
-						if err != nil {
-							logger.Errorf("Failed to delete key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
-							time.Sleep(5 * time.Second)
-							continue
-						}
-						break
-					}
-				}
-			}
 			}
 		}
 		r.log.Pop()
@@ -480,18 +485,18 @@ func (r *ReplicaManager) Init() {
 	go r.run()
 }
 
-type replication struct {
+type Replication struct {
 	DefaultObjectStorage
 	primary ObjectStorage
 	replica ReplicaManager
-	m sync.Mutex
+	m       sync.Mutex
 }
 
-func (s *replication) String() string {
-	return fmt.Sprintf("replication%d://%s", len(s.replica.slave), s.primary)
+func (s *Replication) String() string {
+	return fmt.Sprintf("Replication%d://%s", len(s.replica.slave), s.primary)
 }
 
-func (s *replication) Create() error {
+func (s *Replication) Create() error {
 	if err := s.primary.Create(); err != nil {
 		return err
 	}
@@ -504,22 +509,22 @@ func (s *replication) Create() error {
 	return nil
 }
 
-// func (s *replication) pick(key string) ObjectStorage {
+// func (s *Replication) pick(key string) ObjectStorage {
 // 	h := fnv.New32a()
 // 	_, _ = h.Write([]byte(key))
 // 	i := h.Sum32() % uint32(len(s.stores))
 // 	return s.stores[i]
 // }
 
-func (s *replication) Head(key string) (Object, error) {
+func (s *Replication) Head(key string) (Object, error) {
 	return s.primary.Head(key)
 }
 
-func (s *replication) Get(key string, off, limit int64) (io.ReadCloser, error) {
+func (s *Replication) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return s.primary.Get(key, off, limit)
 }
 
-func (s *replication) Put(key string, body io.Reader) error {
+func (s *Replication) Put(key string, body io.Reader) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 	// write to disk first
@@ -537,7 +542,7 @@ func (s *replication) Put(key string, body io.Reader) error {
 	return nil
 }
 
-func (s *replication) Delete(key string) error {
+func (s *Replication) Delete(key string) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 	cb, err := s.replica.log.Delete(key)
@@ -631,7 +636,7 @@ func (s *replication) Delete(key string) error {
 // 	return o
 // }
 
-func (s *replication) ListAll(prefix, marker string) (<-chan Object, error) {
+func (s *Replication) ListAll(prefix, marker string) (<-chan Object, error) {
 	// heads := &nextObjects{make([]nextKey, 0)}
 	// for i := range s.stores {
 	// 	ch, err := ListAll(s.stores[i], prefix, marker)
@@ -661,24 +666,30 @@ func (s *replication) ListAll(prefix, marker string) (<-chan Object, error) {
 	return s.primary.ListAll(prefix, marker)
 }
 
-func (s *replication) CreateMultipartUpload(key string) (*MultipartUpload, error) {
+func (s *Replication) CreateMultipartUpload(key string) (*MultipartUpload, error) {
 	//return s.primary.CreateMultipartUpload(key)
 	return nil, notSupported
 }
 
-func (s *replication) UploadPart(key string, uploadID string, num int, body []byte) (*Part, error) {
+func (s *Replication) UploadPart(key string, uploadID string, num int, body []byte) (*Part, error) {
 	// return s.primary.UploadPart(key, uploadID, num, body)
 	return nil, notSupported
 }
 
-func (s *replication) AbortUpload(key string, uploadID string) {
+func (s *Replication) AbortUpload(key string, uploadID string) {
 	// s.primary.AbortUpload(key, uploadID)
 	return
 }
 
-func (s *replication) CompleteUpload(key string, uploadID string, parts []*Part) error {
+func (s *Replication) CompleteUpload(key string, uploadID string, parts []*Part) error {
 	// return s.primary.CompleteUpload(key, uploadID, parts)
 	return notSupported
+}
+
+func (s *Replication) Init(reg prometheus.Registerer) {
+	logger.Infof("start replica replay...")
+	s.replica.Init()
+	reg.MustRegister(s.replica.waitingItem)
 }
 
 func NewReplication(name, endpoint, ak, sk, token string, slave []meta.SlaveFormat, logDir string) (ObjectStorage, error) {
@@ -702,7 +713,9 @@ func NewReplication(name, endpoint, ak, sk, token string, slave []meta.SlaveForm
 		}
 	}
 	logger.Info(slave, stores)
-	replica := ReplicaManager{primary, stores, log}
-	replica.Init()
-	return &replication{primary: primary, replica: replica}, nil
+	replica := ReplicaManager{primary, stores, log, prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "replica_waiting_item",
+		Help: "replica waiting item",
+	})}
+	return &Replication{primary: primary, replica: replica}, nil
 }

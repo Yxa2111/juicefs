@@ -158,6 +158,7 @@ type LogManager struct {
 	m         *sync.Mutex
 	newFile   *sync.Cond
 	maxWrite  uint64
+	waitingItem prometheus.Counter
 }
 
 func (m *LogManager) FilePath(idx uint64) string {
@@ -166,17 +167,28 @@ func (m *LogManager) FilePath(idx uint64) string {
 
 func NewLogManager(dir string, maxWrite uint64) (*LogManager, error) {
 	m := sync.Mutex{}
-	log := &LogManager{0, dir, nil, 0, make([]ReplayTask, 0), &m, sync.NewCond(&m), maxWrite}
-	err := log.ScanDir()
-	if err != nil {
-		return nil, err
-	}
-	err = log.NewLogFile()
-	if err != nil {
-		log.Close()
-		return nil, err
-	}
+	log := &LogManager{0, dir, nil, 0, make([]ReplayTask, 0), &m, sync.NewCond(&m), maxWrite, prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "replica_waiting_item",
+		Help: "replica waiting item",
+	})}
 	return log, nil
+}
+
+func (m *LogManager) Init() error {
+	err := m.ScanDir()
+	if err != nil {
+		return err
+	}
+	err = m.NewLogFile()
+	if err != nil {
+		m.Close()
+		return err
+	}
+	return nil
+}
+
+func (m *LogManager) Register(reg prometheus.Registerer) {
+	reg.MustRegister(m.waitingItem)
 }
 
 func (m *LogManager) ScanDir() error {
@@ -383,7 +395,6 @@ type ReplicaManager struct {
 	primary ObjectStorage
 	slave   []ObjectStorage
 	log     *LogManager
-	waitingItem prometheus.Counter
 }
 
 func (r *ReplicaManager) run() {
@@ -481,8 +492,14 @@ func (r *ReplicaManager) run() {
 	}
 }
 
-func (r *ReplicaManager) Init() {
+func (r *ReplicaManager) Init(reg prometheus.Registerer) error {
+	r.log.Register(reg)
+	err := r.log.Init()
+	if err != nil {
+		return err
+	}
 	go r.run()
+	return nil
 }
 
 type Replication struct {
@@ -686,10 +703,9 @@ func (s *Replication) CompleteUpload(key string, uploadID string, parts []*Part)
 	return notSupported
 }
 
-func (s *Replication) Init(reg prometheus.Registerer) {
+func (s *Replication) Init(reg prometheus.Registerer) error {
 	logger.Infof("start replica replay...")
-	s.replica.Init()
-	reg.MustRegister(s.replica.waitingItem)
+	return s.replica.Init(reg)
 }
 
 func NewReplication(name, endpoint, ak, sk, token string, slave []meta.SlaveFormat, logDir string) (ObjectStorage, error) {
@@ -713,9 +729,6 @@ func NewReplication(name, endpoint, ak, sk, token string, slave []meta.SlaveForm
 		}
 	}
 	logger.Info(slave, stores)
-	replica := ReplicaManager{primary, stores, log, prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "replica_waiting_item",
-		Help: "replica waiting item",
-	})}
+	replica := ReplicaManager{primary, stores, log}
 	return &Replication{primary: primary, replica: replica}, nil
 }

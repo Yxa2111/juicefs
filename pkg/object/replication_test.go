@@ -109,6 +109,7 @@ func (suite *LogFileSuite) TestMultiAppend() {
 		createLogFile(a, uint64(i), "test")
 	}
 	l, _ := NewLogManager("test", 20)
+	l.Init()
 	for i := 0; i < 60; i += 1 {
 		l.Put(fmt.Sprintf("key_%v", i + 400))
 		expected = append(expected, LogEntry{Put, fmt.Sprintf("key_%v", i + 400)})

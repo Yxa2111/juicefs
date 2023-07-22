@@ -445,11 +445,13 @@ func newS3(endpoint, accessKey, secretKey, token string) (ObjectStorage, error) 
 		Region:     aws.String(region),
 		DisableSSL: aws.Bool(!ssl),
 		HTTPClient: httpClient,
-		LogLevel:   aws.LogLevel(aws.LogDebugWithEventStreamBody),
+	}
+	if len(os.Getenv("S3_DEBUG")) == 0 {
+		awsConfig.LogLevel = aws.LogLevel(aws.LogDebugWithEventStreamBody)
 	}
 
 	disable100Continue := strings.EqualFold(uri.Query().Get("disable-100-continue"), "true")
-	logger.Info("s3 disable 100 continue", disable100Continue)
+	logger.Info("s3 disable 100 continue ", disable100Continue)
 	if disable100Continue {
 		awsConfig.S3Disable100Continue = aws.Bool(true)
 	}

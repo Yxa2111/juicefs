@@ -58,11 +58,13 @@ func newMinio(endpoint, accessKey, secretKey, token string) (ObjectStorage, erro
 		DisableSSL:       aws.Bool(!ssl),
 		S3ForcePathStyle: aws.Bool(true),
 		HTTPClient:       httpClient,
-		LogLevel:   aws.LogLevel(aws.LogDebugWithEventStreamBody),
+	}
+	if len(os.Getenv("S3_DEBUG")) == 0 {
+		awsConfig.LogLevel = aws.LogLevel(aws.LogDebugWithEventStreamBody)
 	}
 
 	disable100Continue := strings.EqualFold(uri.Query().Get("disable-100-continue"), "true")
-	logger.Info("minio disable 100 continue", disable100Continue)
+	logger.Info("minio disable 100 continue ", disable100Continue)
 	if disable100Continue {
 		awsConfig.S3Disable100Continue = aws.Bool(true)
 	}

@@ -59,7 +59,7 @@ func newMinio(endpoint, accessKey, secretKey, token string) (ObjectStorage, erro
 		S3ForcePathStyle: aws.Bool(true),
 		HTTPClient:       httpClient,
 	}
-	if len(os.Getenv("S3_DEBUG")) == 0 {
+	if len(os.Getenv("S3_DEBUG")) > 0 {
 		awsConfig.LogLevel = aws.LogLevel(aws.LogDebugWithEventStreamBody)
 	}
 

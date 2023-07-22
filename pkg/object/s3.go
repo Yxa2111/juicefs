@@ -446,7 +446,7 @@ func newS3(endpoint, accessKey, secretKey, token string) (ObjectStorage, error) 
 		DisableSSL: aws.Bool(!ssl),
 		HTTPClient: httpClient,
 	}
-	if len(os.Getenv("S3_DEBUG")) == 0 {
+	if len(os.Getenv("S3_DEBUG")) > 0 {
 		awsConfig.LogLevel = aws.LogLevel(aws.LogDebugWithEventStreamBody)
 	}
 

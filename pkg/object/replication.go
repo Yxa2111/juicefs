@@ -46,7 +46,7 @@ const (
 )
 
 const (
-	MaxWrite uint64 = 1000
+	MaxWrite uint64 = 100
 )
 
 type LogEntry struct {

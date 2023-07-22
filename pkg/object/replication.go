@@ -412,7 +412,6 @@ func (r *ReplicaManager) run() {
 	for {
 		f := r.log.NextFile()
 		logger.Infof("start replaying log file %v", f.String())
-		time.Sleep(10 * time.Second)
 		for _, entry := range f.Entries() {
 			switch entry.logType {
 			case Put:

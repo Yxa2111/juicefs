@@ -43,6 +43,7 @@ import (
 	osync "github.com/juicedata/juicefs/pkg/sync"
 	"github.com/juicedata/juicefs/pkg/version"
 	"github.com/urfave/cli/v2"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func cmdFormat() *cli.Command {
@@ -209,7 +210,7 @@ func fixObjectSize(s int) int {
 	return s
 }
 
-func createStorage(format meta.Format) (object.ObjectStorage, error) {
+func createStorage(format meta.Format, reg prometheus.Registerer) (object.ObjectStorage, error) {
 	if err := format.Decrypt(); err != nil {
 		return nil, fmt.Errorf("format decrypt: %s", err)
 	}
@@ -234,7 +235,7 @@ func createStorage(format meta.Format) (object.ObjectStorage, error) {
 	logger.Info(format)
 
 	if len(format.Slave) > 0 {
-		blob, err = object.NewReplication(strings.ToLower(format.Storage), format.Bucket, format.AccessKey, format.SecretKey, format.SessionToken, format.Slave, format.LogDir)
+		blob, err = object.NewReplication(strings.ToLower(format.Storage), format.Bucket, format.AccessKey, format.SecretKey, format.SessionToken, format.Slave, format.LogDir, reg)
 		logger.Info(blob, err)
 	} else if format.Shards > 1 {
 		blob, err = object.NewSharded(strings.ToLower(format.Storage), format.Bucket, format.AccessKey, format.SecretKey, format.SessionToken, format.Shards)
@@ -533,7 +534,7 @@ func format(c *cli.Context) error {
 		}
 	}
 
-	blob, err := createStorage(*format)
+	blob, err := createStorage(*format, nil)
 	logger.Info(blob, err)
 	if err != nil {
 		logger.Fatalf("object storage: %s", err)

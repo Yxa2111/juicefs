@@ -433,7 +433,7 @@ func jfs_init(cname, jsonConf, user, group, superuser, supergroup *C.char) uintp
 				}
 			}
 			return format, err
-		})
+		}, registerer)
 		if err != nil {
 			logger.Errorf("object storage: %s", err)
 			return nil

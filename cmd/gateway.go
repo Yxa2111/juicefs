@@ -196,7 +196,7 @@ func initForSvc(c *cli.Context, mp string, metaUrl string) (*vfs.Config, *fs.Fil
 
 	blob, err := NewReloadableStorage(format, func() (*meta.Format, error) {
 		return getFormat(c, metaCli)
-	})
+	}, registerer)
 	if err != nil {
 		logger.Fatalf("object storage: %s", err)
 	}

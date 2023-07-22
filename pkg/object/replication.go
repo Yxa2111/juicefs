@@ -106,6 +106,8 @@ func (_ *LogEntries) Close(_ bool) error { return nil }
 
 func (_ *LogEntries) String() string { return "<current>" }
 
+func (l *LogEntries) Size() int { return len(l.entries) }
+
 type LogFile struct {
 	LogEntries
 	file    *os.File
@@ -147,6 +149,7 @@ type ReplayTask interface {
 	Entries() []LogEntry
 	Close(remove bool) error
 	String() string
+	Size() int
 }
 
 type LogManager struct {
@@ -158,7 +161,7 @@ type LogManager struct {
 	m         *sync.Mutex
 	newFile   *sync.Cond
 	maxWrite  uint64
-	waitingItem prometheus.Counter
+	waitingItem prometheus.Gauge
 }
 
 func (m *LogManager) FilePath(idx uint64) string {
@@ -167,9 +170,9 @@ func (m *LogManager) FilePath(idx uint64) string {
 
 func NewLogManager(dir string, maxWrite uint64) (*LogManager, error) {
 	m := sync.Mutex{}
-	log := &LogManager{0, dir, nil, 0, make([]ReplayTask, 0), &m, sync.NewCond(&m), maxWrite, prometheus.NewCounter(prometheus.CounterOpts{
-		Name: "replica_waiting_item",
-		Help: "replica waiting item",
+	log := &LogManager{0, dir, nil, 0, make([]ReplayTask, 0), &m, sync.NewCond(&m), maxWrite, prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "replica_waiting_object",
+		Help: "replica waiting object",
 	})}
 	return log, nil
 }
@@ -226,7 +229,7 @@ func (m *LogManager) ScanDir() error {
 		return logFiles[i].index < logFiles[j].index
 	})
 	for _, item := range logFiles {
-		m.previous = append(m.previous, item)
+		m.pushTask(item)
 	}
 	return nil
 }
@@ -292,6 +295,10 @@ func (m *LogManager) Delete(key string) (Callback, error) {
 }
 
 func (m *LogManager) AppendLog(entry LogEntry) (Callback, error) {
+	if (m.log == nil) {
+		logger.Warnf("replication do not init, skip replaying...")
+		return func(){}, nil
+	}
 	_, err := m.log.AppendLog(entry)
 	m.written += 1
 	if err != nil {
@@ -322,8 +329,9 @@ func (m *LogManager) NextFile() ReplayTask {
 func (m *LogManager) pushTask(t ReplayTask) {
 	m.m.Lock()
 	defer m.m.Unlock()
-	m.newFile.Signal()
 	m.previous = append(m.previous, t)
+	m.waitingItem.Add(float64(t.Size()))
+	m.newFile.Signal()
 }
 
 func (m *LogManager) Pop() {
@@ -335,6 +343,7 @@ func (m *LogManager) Pop() {
 	f := m.previous[0]
 	f.Close(true)
 	m.previous = m.previous[1:]
+	m.waitingItem.Sub(float64(f.Size()))
 }
 
 func (m *LogManager) Close() {
@@ -493,7 +502,9 @@ func (r *ReplicaManager) run() {
 }
 
 func (r *ReplicaManager) Init(reg prometheus.Registerer) error {
-	r.log.Register(reg)
+	if reg != nil {
+		r.log.Register(reg)
+	}
 	err := r.log.Init()
 	if err != nil {
 		return err
@@ -708,7 +719,7 @@ func (s *Replication) Init(reg prometheus.Registerer) error {
 	return s.replica.Init(reg)
 }
 
-func NewReplication(name, endpoint, ak, sk, token string, slave []meta.SlaveFormat, logDir string) (ObjectStorage, error) {
+func NewReplication(name, endpoint, ak, sk, token string, slave []meta.SlaveFormat, logDir string, reg prometheus.Registerer) (ObjectStorage, error) {
 	if len(slave) == 0 || len(logDir) == 0 {
 		return nil, notSupported
 	}
@@ -730,5 +741,6 @@ func NewReplication(name, endpoint, ak, sk, token string, slave []meta.SlaveForm
 	}
 	logger.Info(slave, stores)
 	replica := ReplicaManager{primary, stores, log}
-	return &Replication{primary: primary, replica: replica}, nil
+	result := &Replication{primary: primary, replica: replica}
+	return result, result.Init(reg)
 }

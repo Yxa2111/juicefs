@@ -371,8 +371,8 @@ type storageHolder struct {
 	object.ObjectStorage
 }
 
-func NewReloadableStorage(format *meta.Format, reload func() (*meta.Format, error)) (object.ObjectStorage, error) {
-	blob, err := createStorage(*format)
+func NewReloadableStorage(format *meta.Format, reload func() (*meta.Format, error), reg prometheus.Registerer) (object.ObjectStorage, error) {
+	blob, err := createStorage(*format, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +388,7 @@ func NewReloadableStorage(format *meta.Format, reload func() (*meta.Format, erro
 			}
 			if new.Storage != old.Storage || new.Bucket != old.Bucket || new.AccessKey != old.AccessKey || new.SecretKey != old.SecretKey || new.SessionToken != old.SessionToken {
 				logger.Infof("found new configuration: storage=%s bucket=%s ak=%s", new.Storage, new.Bucket, new.AccessKey)
-				newBlob, err := createStorage(*new)
+				newBlob, err := createStorage(*new, reg)
 				if err != nil {
 					logger.Warnf("object storage: %s", err)
 					continue
@@ -424,7 +424,7 @@ func mount(c *cli.Context) error {
 
 	blob, err := NewReloadableStorage(format, func() (*meta.Format, error) {
 		return getFormat(c, metaCli)
-	})
+	}, registerer)
 	if err != nil {
 		return fmt.Errorf("object storage: %s", err)
 	}
@@ -432,10 +432,6 @@ func mount(c *cli.Context) error {
 
 	chunkConf := getChunkConf(c, format)
 	store := chunk.NewCachedStore(blob, *chunkConf, registerer)
-	r, ok := blob.(*object.Replication)
-	if ok {
-		r.Init(registerer)
-	}
 	registerMetaMsg(metaCli, store, chunkConf)
 
 	vfsConf := getVfsConf(c, metaConf, format, chunkConf)

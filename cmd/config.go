@@ -218,7 +218,7 @@ func config(ctx *cli.Context) error {
 
 	if !ctx.Bool("force") {
 		if storage {
-			blob, err := createStorage(*format)
+			blob, err := createStorage(*format, nil)
 			if err != nil {
 				return err
 			}

@@ -106,7 +106,7 @@ func (_ *LogEntries) Close(_ bool) error { return nil }
 
 func (_ *LogEntries) String() string { return "<current>" }
 
-func (l *LogEntries) Size() int { return len(l.entries) }
+func (l *LogEntries) Size() int { return len(l.Entries()) }
 
 type LogFile struct {
 	LogEntries
@@ -142,6 +142,8 @@ func (f *LogFile) Entries() []LogEntry {
 }
 
 func (f *LogFile) String() string { return f.path }
+
+func (l *LogFile) Size() int { return len(l.Entries()) }
 
 type Callback func()
 
@@ -410,6 +412,7 @@ func (r *ReplicaManager) run() {
 	for {
 		f := r.log.NextFile()
 		logger.Infof("start replaying log file %v", f.String())
+		time.Sleep(10 * time.Second)
 		for _, entry := range f.Entries() {
 			switch entry.logType {
 			case Put:

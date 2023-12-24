@@ -357,18 +357,43 @@ func (v *VFS) Create(ctx Context, parent Ino, name string, mode uint16, cumask u
 		return
 	}
 
+	r, err := v.GetReplicateAttr(ctx, parent)
+	if err != 0 {
+		return
+	}
+
 	var inode Ino
 	var attr = &Attr{}
 	err = v.Meta.Create(ctx, parent, name, mode&07777, cumask, flags, &inode, attr)
 	if runtime.GOOS == "darwin" && err == syscall.ENOENT {
 		err = syscall.EACCES
 	}
+
+	if err != 0 {
+		return
+	}
+
+	if r != nil {
+		err = WriteReplicateXattr(ctx, inode, v.Meta, *r, flags)
+	}
+
 	if err == 0 {
 		v.UpdateLength(inode, attr)
-		fh = v.newFileHandle(inode, attr.Length, flags)
+		fh = v.newFileHandle(inode, attr.Length, flags, r)
 		entry = &meta.Entry{Inode: inode, Attr: attr}
 	}
 	return
+}
+
+func (v *VFS) GetReplicateAttr(ctx Context, ino Ino) (*ReplicateXattr, syscall.Errno) {
+	for _, fh := range v.findAllHandles(ino) {
+		fh.Lock()
+		defer fh.Unlock()
+		r := fh.replica
+		return &r, 0
+	}
+
+	return ReadReplicateXattr(ctx, ino, v.Meta)
 }
 
 func (v *VFS) Open(ctx Context, ino Ino, flags uint32) (entry *meta.Entry, fh uint64, err syscall.Errno) {
@@ -406,11 +431,19 @@ func (v *VFS) Open(ctx Context, ino Ino, flags uint32) (entry *meta.Entry, fh ui
 	}
 
 	err = v.Meta.Open(ctx, ino, flags, attr)
-	if err == 0 {
-		v.UpdateLength(ino, attr)
-		fh = v.newFileHandle(ino, attr.Length, flags)
-		entry = &meta.Entry{Inode: ino, Attr: attr}
+	if err != 0 {
+		return
 	}
+
+	// get replicate xattr
+	r, err := v.GetReplicateAttr(ctx, ino)
+	if err != 0 {
+		return
+	}
+
+	v.UpdateLength(ino, attr)
+	fh = v.newFileHandle(ino, attr.Length, flags, r)
+	entry = &meta.Entry{Inode: ino, Attr: attr}
 	return
 }
 

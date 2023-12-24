@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"fmt"
@@ -105,7 +106,7 @@ func (s *obsClient) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (s *obsClient) Put(key string, in io.Reader) error {
+func (s *obsClient) Put(_ context.Context, key string, in io.Reader) error {
 	var body io.ReadSeeker
 	var vlen int64
 	var sum []byte
@@ -159,7 +160,7 @@ func (s *obsClient) Copy(dst, src string) error {
 	return err
 }
 
-func (s *obsClient) Delete(key string) error {
+func (s *obsClient) Delete(_ context.Context, key string) error {
 	params := obs.DeleteObjectInput{}
 	params.Bucket = s.bucket
 	params.Key = key

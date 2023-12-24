@@ -22,6 +22,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"context"
 
 	"github.com/juicedata/juicefs/pkg/object"
 )
@@ -45,7 +46,7 @@ func TestSync(t *testing.T) {
 	}
 
 	for _, instance := range testInstances {
-		err = storage.Put(fmt.Sprintf("/%s/%s", minioDir, instance.path), bytes.NewReader([]byte(instance.content)))
+		err = storage.Put(context.Background(), fmt.Sprintf("/%s/%s", minioDir, instance.path), bytes.NewReader([]byte(instance.content)))
 		if err != nil {
 			t.Fatalf("storage put failed: %v", err)
 		}

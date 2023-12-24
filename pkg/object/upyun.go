@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -78,14 +79,14 @@ func (u *up) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return ioutil.NopCloser(bytes.NewBuffer(data)), nil
 }
 
-func (u *up) Put(key string, in io.Reader) error {
+func (u *up) Put(_ context.Context, key string, in io.Reader) error {
 	return u.c.Put(&upyun.PutObjectConfig{
 		Path:   "/" + key,
 		Reader: in,
 	})
 }
 
-func (u *up) Delete(key string) error {
+func (u *up) Delete(_ context.Context, key string) error {
 	return u.c.Delete(&upyun.DeleteObjectConfig{
 		Path: "/" + key,
 	})

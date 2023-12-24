@@ -18,6 +18,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -195,7 +196,7 @@ func TestEncryptedStore(t *testing.T) {
 	kc := NewRSAEncryptor(testkey)
 	dc := NewAESEncryptor(kc)
 	es := NewEncrypted(s, dc)
-	_ = es.Put("a", bytes.NewReader([]byte("hello")))
+	_ = es.Put(context.Background(), "a", bytes.NewReader([]byte("hello")))
 	r, err := es.Get("a", 1, 2)
 	if err != nil {
 		t.Errorf("Get a: %s", err)

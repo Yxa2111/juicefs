@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"time"
+	"context"
 )
 
 type withPrefix struct {
@@ -76,12 +77,12 @@ func (p *withPrefix) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return p.os.Get(p.prefix+key, off, limit)
 }
 
-func (p *withPrefix) Put(key string, in io.Reader) error {
-	return p.os.Put(p.prefix+key, in)
+func (p *withPrefix) Put(c context.Context, key string, in io.Reader) error {
+	return p.os.Put(c, p.prefix+key, in)
 }
 
-func (p *withPrefix) Delete(key string) error {
-	return p.os.Delete(p.prefix + key)
+func (p *withPrefix) Delete(c context.Context, key string) error {
+	return p.os.Delete(c, p.prefix + key)
 }
 
 func (p *withPrefix) List(prefix, marker string, limit int64) ([]Object, error) {

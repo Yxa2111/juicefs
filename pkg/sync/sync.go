@@ -28,6 +28,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"context"
 
 	"github.com/juicedata/juicefs/pkg/object"
 	"github.com/juicedata/juicefs/pkg/utils"
@@ -200,7 +201,7 @@ func deleteObj(storage object.ObjectStorage, key string, dry bool) {
 		return
 	}
 	start := time.Now()
-	if err := try(3, func() error { return storage.Delete(key) }); err == nil {
+	if err := try(3, func() error { return storage.Delete(context.Background(), key) }); err == nil {
 		deleted.Increment()
 		logger.Debugf("Deleted %s from %s in %s", key, storage, time.Since(start))
 	} else {
@@ -363,7 +364,7 @@ func doCopySingle(src, dst object.ObjectStorage, key string, size int64) error {
 	defer in.Close()
 
 	if size <= maxBlock || inMap(dst, readInMem) || inMap(src, streamRead) || inMap(dst, streamWrite) {
-		return dst.Put(key, in)
+		return dst.Put(context.Background(), key, in)
 	} else { // obj.Size > maxBlock, download the object into disk first
 		f, err := ioutil.TempFile("", "rep")
 		if err != nil {
@@ -382,7 +383,7 @@ func doCopySingle(src, dst object.ObjectStorage, key string, size int64) error {
 		if _, err = f.Seek(0, 0); err != nil {
 			return err
 		}
-		return dst.Put(key, f)
+		return dst.Put(context.Background(), key, f)
 	}
 }
 
@@ -585,7 +586,7 @@ func copyLink(src object.ObjectStorage, dst object.ObjectStorage, key string) er
 	if p, err := src.(object.SupportSymlink).Readlink(key); err != nil {
 		return err
 	} else {
-		if err := dst.Delete(key); err != nil {
+		if err := dst.Delete(context.Background(), key); err != nil {
 			logger.Debugf("Deleted %s from %s ", key, dst)
 			return err
 		}

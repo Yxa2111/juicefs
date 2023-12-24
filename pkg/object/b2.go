@@ -20,6 +20,7 @@
 package object
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -94,7 +95,7 @@ func (c *b2client) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return r, err
 }
 
-func (c *b2client) Put(key string, data io.Reader) error {
+func (c *b2client) Put(_ context.Context, key string, data io.Reader) error {
 	_, err := c.bucket.UploadFile(key, nil, data)
 	return err
 }
@@ -108,7 +109,7 @@ func (c *b2client) Copy(dst, src string) error {
 	return err
 }
 
-func (c *b2client) Delete(key string) error {
+func (c *b2client) Delete(_ context.Context, key string) error {
 	f, err := c.getFileInfo(key)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "not_found") {

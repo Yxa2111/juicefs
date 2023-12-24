@@ -35,6 +35,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"context"
 
 	"github.com/google/uuid"
 	"github.com/juicedata/juicefs/pkg/compress"
@@ -278,7 +279,7 @@ func randSeq(n int) string {
 }
 
 func doTesting(store object.ObjectStorage, key string, data []byte) error {
-	if err := store.Put(key, bytes.NewReader(data)); err != nil {
+	if err := store.Put(context.Background(), key, bytes.NewReader(data)); err != nil {
 		if strings.Contains(err.Error(), "Access Denied") {
 			return fmt.Errorf("Failed to put: %s", err)
 		}
@@ -291,7 +292,7 @@ func doTesting(store object.ObjectStorage, key string, data []byte) error {
 					store, err2, err)
 			}
 		}
-		if err := store.Put(key, bytes.NewReader(data)); err != nil {
+		if err := store.Put(context.Background(), key, bytes.NewReader(data)); err != nil {
 			return fmt.Errorf("Failed to put: %s", err)
 		}
 	}
@@ -307,7 +308,7 @@ func doTesting(store object.ObjectStorage, key string, data []byte) error {
 	if !bytes.Equal(data, data2) {
 		return fmt.Errorf("Read wrong data")
 	}
-	err = store.Delete(key)
+	err = store.Delete(context.Background(), key)
 	if err != nil {
 		// it's OK to don't have delete permission
 		fmt.Printf("Failed to delete: %s", err)
@@ -330,7 +331,7 @@ func test(store object.ObjectStorage) error {
 		time.Sleep(time.Second * time.Duration(i*3+1))
 	}
 	if err == nil {
-		_ = store.Delete("testing/")
+		_ = store.Delete(context.Background(), "testing/")
 	}
 	return err
 }
@@ -559,7 +560,7 @@ func format(c *cli.Context) error {
 			} else {
 				logger.Warnf("List storage %s failed: %s", blob, err)
 			}
-			if err = blob.Put("juicefs_uuid", strings.NewReader(format.UUID)); err != nil {
+			if err = blob.Put(context.Background(), "juicefs_uuid", strings.NewReader(format.UUID)); err != nil {
 				logger.Warnf("Put uuid object: %s", err)
 			}
 		}
@@ -572,7 +573,7 @@ func format(c *cli.Context) error {
 	}
 	if err = m.Init(*format, c.Bool("force")); err != nil {
 		if create {
-			_ = blob.Delete("juicefs_uuid")
+			_ = blob.Delete(context.Background(), "juicefs_uuid")
 		}
 		logger.Fatalf("format: %s", err)
 	}

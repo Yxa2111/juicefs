@@ -30,6 +30,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"context"
 
 	"github.com/juicedata/juicefs/pkg/object"
 	osync "github.com/juicedata/juicefs/pkg/sync"
@@ -136,7 +137,7 @@ func objbench(ctx *cli.Context) error {
 	prefix := fmt.Sprintf("__juicefs_benchmark_%d__/", time.Now().UnixNano())
 	blob := object.WithPrefix(blobOrigin, prefix)
 	defer func() {
-		_ = blobOrigin.Delete(prefix)
+		_ = blobOrigin.Delete(ctx.Context, prefix)
 	}()
 	bSize := int(ctx.Uint("block-size")) << 10
 	fsize := int(ctx.Uint("big-object-size")) << 20
@@ -217,7 +218,7 @@ func objbench(ctx *cli.Context) error {
 			startKey: sCount,
 			after: func(blob object.ObjectStorage) {
 				for i := sCount; i < sCount+bCount; i++ {
-					_ = blob.Delete(strconv.Itoa(i))
+					_ = blob.Delete(ctx.Context, strconv.Itoa(i))
 				}
 			},
 			getResult: func(cost float64) []string {
@@ -490,12 +491,12 @@ func getMockData(seed []byte, idx int) []byte {
 
 func (bm *benchMarkObj) put(key string, startKey int) error {
 	idx, _ := strconv.Atoi(key)
-	return bm.blob.Put(key, bytes.NewReader(getMockData(bm.seed, idx-startKey)))
+	return bm.blob.Put(context.Background(), key, bytes.NewReader(getMockData(bm.seed, idx-startKey)))
 }
 
 func (bm *benchMarkObj) smallPut(key string, startKey int) error {
 	idx, _ := strconv.Atoi(key)
-	return bm.blob.Put(key, bytes.NewReader(getMockData(bm.smallSeed, idx)))
+	return bm.blob.Put(context.Background(), key, bytes.NewReader(getMockData(bm.smallSeed, idx)))
 }
 
 func getAndCheckN(blob object.ObjectStorage, key string, seed []byte, getOrgIdx func(idx int) int) error {
@@ -534,7 +535,7 @@ func (bm *benchMarkObj) smallGet(key string, startKey int) error {
 }
 
 func (bm *benchMarkObj) delete(key string, startKey int) error {
-	return bm.blob.Delete(key)
+	return bm.blob.Delete(context.Background(), key)
 }
 
 func (bm *benchMarkObj) head(key string, startKey int) error {
@@ -639,20 +640,20 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 				return utils.ENOTSUP
 			}
 			br := []byte("hello")
-			if err := blob.Put(key, bytes.NewReader(br)); err != nil {
+			if err := blob.Put(context.Background(), key, bytes.NewReader(br)); err != nil {
 				return fmt.Errorf("put object failed: %s", err)
 			}
-			defer blob.Delete(key) //nolint:errcheck
+			defer blob.Delete(context.Background(), key) //nolint:errcheck
 			return fn()
 		})
 	}
 
 	runCase("create a bucket", func(blob object.ObjectStorage) error {
 		created := true
-		if err := blob.Put(key, bytes.NewReader(nil)); err != nil {
+		if err := blob.Put(context.Background(), key, bytes.NewReader(nil)); err != nil {
 			created = false
 		}
-		defer blob.Delete(key) //nolint:errcheck
+		defer blob.Delete(context.Background(), key) //nolint:errcheck
 
 		if !created {
 			if err := blob.Create(); err != nil {
@@ -667,19 +668,19 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 
 	runCase("put an object", func(blob object.ObjectStorage) error {
 		br := []byte("hello")
-		if err := blob.Put(key, bytes.NewReader(br)); err != nil {
+		if err := blob.Put(context.Background(), key, bytes.NewReader(br)); err != nil {
 			return fmt.Errorf("put object failed: %s", err)
 		}
-		defer blob.Delete(key) //nolint:errcheck
+		defer blob.Delete(context.Background(), key) //nolint:errcheck
 		return nil
 	})
 
 	runCase("get an object", func(blob object.ObjectStorage) error {
 		br := []byte("hello")
-		if err := blob.Put(key, bytes.NewReader(br)); err != nil {
+		if err := blob.Put(context.Background(), key, bytes.NewReader(br)); err != nil {
 			return fmt.Errorf("put object failed: %s", err)
 		}
-		defer blob.Delete(key) //nolint:errcheck
+		defer blob.Delete(context.Background(), key) //nolint:errcheck
 		if d, e := get(blob, key, 0, -1); e != nil || d != string(br) {
 			return fmt.Errorf(`failed to get an object: expect "hello", but got %v, error: %s`, d, e)
 		}
@@ -698,10 +699,10 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 
 	runCase("get partial object", func(blob object.ObjectStorage) error {
 		br := []byte("hello")
-		if err := blob.Put(key, bytes.NewReader(br)); err != nil {
+		if err := blob.Put(context.Background(), key, bytes.NewReader(br)); err != nil {
 			return fmt.Errorf("put object failed: %s", err)
 		}
-		defer blob.Delete(key) //nolint:errcheck
+		defer blob.Delete(context.Background(), key) //nolint:errcheck
 
 		// get first
 		if d, e := get(blob, key, 0, 1); e != nil || d != "h" {
@@ -732,10 +733,10 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 
 	runCase("head an object", func(blob object.ObjectStorage) error {
 		br := []byte("hello")
-		if err := blob.Put(key, bytes.NewReader(br)); err != nil {
+		if err := blob.Put(context.Background(), key, bytes.NewReader(br)); err != nil {
 			return fmt.Errorf("put object failed: %s", err)
 		}
-		defer blob.Delete(key) //nolint:errcheck
+		defer blob.Delete(context.Background(), key) //nolint:errcheck
 		if h, err := blob.Head(key); err != nil {
 			return fmt.Errorf("failed to head object %s", err)
 		} else {
@@ -748,24 +749,24 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 
 	runCase("delete an object", func(blob object.ObjectStorage) error {
 		br := []byte("hello")
-		if err := blob.Put(key, bytes.NewReader(br)); err != nil {
+		if err := blob.Put(context.Background(), key, bytes.NewReader(br)); err != nil {
 			return fmt.Errorf("put object failed: %s", err)
 		}
-		if err := blob.Delete(key); err != nil {
+		if err := blob.Delete(context.Background(), key); err != nil {
 			return fmt.Errorf("delete failed: %s", err)
 		}
 		if _, err := blob.Head(key); err == nil {
 			return fmt.Errorf("expect err is not nil")
 		}
 
-		if err := blob.Delete(key); err != nil {
+		if err := blob.Delete(context.Background(), key); err != nil {
 			return fmt.Errorf("delete not existed: %v", err)
 		}
 		return nil
 	})
 
 	runCase("delete non-exist", func(blob object.ObjectStorage) error {
-		if err := blob.Delete(key); err != nil {
+		if err := blob.Delete(context.Background(), key); err != nil {
 			return fmt.Errorf("deleting a non-existent object returns an error %v", err)
 		}
 		return nil
@@ -773,10 +774,10 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 
 	runCase("list objects", func(blob object.ObjectStorage) error {
 		br := []byte("hello")
-		if err := blob.Put(key, bytes.NewReader(br)); err != nil {
+		if err := blob.Put(context.Background(), key, bytes.NewReader(br)); err != nil {
 			return fmt.Errorf("put object failed: %s", err)
 		}
-		defer blob.Delete(key) //nolint:errcheck
+		defer blob.Delete(context.Background(), key) //nolint:errcheck
 		if isFileSystem {
 			objs, err := listAll(blob, "", "", 2)
 			if err == nil {
@@ -841,14 +842,14 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 		for i := 0; i < keyTotal; i++ {
 			k := fmt.Sprintf("hashKey%d", i)
 			sortedKeys = append(sortedKeys, k)
-			if err := blob.Put(fmt.Sprintf("hashKey%d", i), bytes.NewReader(br)); err != nil {
+			if err := blob.Put(context.Background(), fmt.Sprintf("hashKey%d", i), bytes.NewReader(br)); err != nil {
 				return fmt.Errorf("put object failed: %s", err.Error())
 			}
 		}
 		sort.Strings(sortedKeys)
 		defer func() {
 			for i := 0; i < keyTotal; i++ {
-				_ = blob.Delete(fmt.Sprintf("hashKey%d", i))
+				_ = blob.Delete(context.Background(), fmt.Sprintf("hashKey%d", i))
 			}
 		}()
 
@@ -866,8 +867,8 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 
 	runCase("special key", func(blob object.ObjectStorage) error {
 		key := "测试编码文件" + `{"name":"juicefs"}` + string('\u001F')
-		defer blob.Delete(key) //nolint:errcheck
-		if err := blob.Put(key, bytes.NewReader(nil)); err != nil {
+		defer blob.Delete(context.Background(), key) //nolint:errcheck
+		if err := blob.Put(context.Background(), key, bytes.NewReader(nil)); err != nil {
 			return fmt.Errorf("put encode file failed: %s", err)
 		} else {
 			if resp, err := blob.List("", "测试编码文件", 1); err != nil && err != utils.ENOTSUP {
@@ -889,23 +890,23 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 		for i := 0; i < count; i++ {
 			copy(content[i*buffL:(i+1)*buffL], buff)
 		}
-		if err := blob.Put(key, bytes.NewReader(content)); err != nil {
+		if err := blob.Put(context.Background(), key, bytes.NewReader(content)); err != nil {
 			return fmt.Errorf("put big object failed: %s", err)
 		}
-		defer blob.Delete(key) //nolint:errcheck
+		defer blob.Delete(context.Background(), key) //nolint:errcheck
 		return nil
 	})
 
 	runCase("put an empty object", func(blob object.ObjectStorage) error {
 		// Copy empty objects
-		defer blob.Delete("empty_test_file") //nolint:errcheck
-		if err := blob.Put("empty_test_file", bytes.NewReader([]byte{})); err != nil {
+		defer blob.Delete(context.Background(), "empty_test_file") //nolint:errcheck
+		if err := blob.Put(context.Background(), "empty_test_file", bytes.NewReader([]byte{})); err != nil {
 			return fmt.Errorf("put empty object failed: %s", err)
 		}
 
 		// Copy `/` suffixed object
-		defer blob.Delete("slash_test_file/") //nolint:errcheck
-		if err := blob.Put("slash_test_file/", bytes.NewReader([]byte{})); err != nil {
+		defer blob.Delete(context.Background(), "slash_test_file/") //nolint:errcheck
+		if err := blob.Put(context.Background(), "slash_test_file/", bytes.NewReader([]byte{})); err != nil {
 			return fmt.Errorf("put `/` suffixed object failed: %s", err)
 		}
 		return nil
@@ -914,7 +915,7 @@ func functionalTesting(blob object.ObjectStorage, result *[][]string, colorful b
 	runCase("multipart upload", func(blob object.ObjectStorage) error {
 		key := "multi_test_file"
 		if err := blob.CompleteUpload(key, "notExistsUploadId", []*object.Part{}); err != utils.ENOTSUP {
-			defer blob.Delete(key) //nolint:errcheck
+			defer blob.Delete(context.Background(), key) //nolint:errcheck
 			partSize := 5 << 20
 			total := 10
 			seed := make([]byte, partSize)

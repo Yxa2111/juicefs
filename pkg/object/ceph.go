@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -134,7 +135,7 @@ var cephPool = sync.Pool{
 	},
 }
 
-func (c *ceph) Put(key string, in io.Reader) error {
+func (c *ceph) Put(_ context.Context, key string, in io.Reader) error {
 	return c.do(func(ctx *rados.IOContext) error {
 		if b, ok := in.(*bytes.Reader); ok {
 			v := reflect.ValueOf(b)
@@ -161,7 +162,7 @@ func (c *ceph) Put(key string, in io.Reader) error {
 	})
 }
 
-func (c *ceph) Delete(key string) error {
+func (c *ceph) Delete(_ context.Context, key string) error {
 	err := c.do(func(ctx *rados.IOContext) error {
 		return ctx.Delete(key)
 	})

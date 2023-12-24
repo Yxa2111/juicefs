@@ -68,7 +68,7 @@ func (r *redisStore) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return ioutil.NopCloser(bytes.NewBuffer(data)), nil
 }
 
-func (r *redisStore) Put(key string, in io.Reader) error {
+func (r *redisStore) Put(c context.Context, key string, in io.Reader) error {
 	data, err := ioutil.ReadAll(in)
 	if err != nil {
 		return err
@@ -76,7 +76,7 @@ func (r *redisStore) Put(key string, in io.Reader) error {
 	return r.rdb.Set(c, key, data, 0).Err()
 }
 
-func (r *redisStore) Delete(key string) error {
+func (r *redisStore) Delete(c context.Context, key string) error {
 	return r.rdb.Del(c, key).Err()
 }
 

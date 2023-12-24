@@ -18,6 +18,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
@@ -222,7 +223,7 @@ func (s *RestfulStorage) Get(key string, off, limit int64) (io.ReadCloser, error
 	return resp.Body, nil
 }
 
-func (u *RestfulStorage) Put(key string, body io.Reader) error {
+func (u *RestfulStorage) Put(_ context.Context, key string, body io.Reader) error {
 	resp, err := u.request("PUT", key, body, nil)
 	if err != nil {
 		return err
@@ -244,10 +245,10 @@ func (s *RestfulStorage) Copy(dst, src string) error {
 	if err != nil {
 		return err
 	}
-	return s.Put(dst, bytes.NewReader(d))
+	return s.Put(context.Background(), dst, bytes.NewReader(d))
 }
 
-func (s *RestfulStorage) Delete(key string) error {
+func (s *RestfulStorage) Delete(_ context.Context, key string) error {
 	resp, err := s.request("DELETE", key, nil, nil)
 	if err != nil {
 		return err

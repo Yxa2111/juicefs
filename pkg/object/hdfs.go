@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -114,7 +115,7 @@ func (h *hdfsclient) Get(key string, off, limit int64) (io.ReadCloser, error) {
 
 const abcException = "org.apache.hadoop.hdfs.protocol.AlreadyBeingCreatedException"
 
-func (h *hdfsclient) Put(key string, in io.Reader) error {
+func (h *hdfsclient) Put(_ context.Context, key string, in io.Reader) error {
 	path := h.path(key)
 	if strings.HasSuffix(path, dirSuffix) {
 		return h.c.MkdirAll(path, os.FileMode(0755))
@@ -159,7 +160,7 @@ func IsErrReplicating(err error) bool {
 	return ok && pe.Err == hdfs.ErrReplicating
 }
 
-func (h *hdfsclient) Delete(key string) error {
+func (h *hdfsclient) Delete(_ context.Context, key string) error {
 	err := h.c.Remove(h.path(key))
 	if err != nil && os.IsNotExist(err) {
 		err = nil

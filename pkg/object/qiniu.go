@@ -20,6 +20,7 @@
 package object
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -106,7 +107,7 @@ func (q *qiniu) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return q.s3client.Get("/"+key, off, limit)
 }
 
-func (q *qiniu) Put(key string, in io.Reader) error {
+func (q *qiniu) Put(ctx context.Context, key string, in io.Reader) error {
 	body, vlen, err := findLen(in)
 	if err != nil {
 		return err
@@ -126,7 +127,7 @@ func (q *qiniu) CreateMultipartUpload(key string) (*MultipartUpload, error) {
 	return nil, notSupported
 }
 
-func (q *qiniu) Delete(key string) error {
+func (q *qiniu) Delete(_ context.Context, key string) error {
 	err := q.bm.Delete(q.bucket, key)
 	if err != nil && strings.Contains(err.Error(), notexist) {
 		return nil

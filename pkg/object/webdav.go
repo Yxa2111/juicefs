@@ -20,6 +20,7 @@
 package object
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -129,7 +130,7 @@ func (w *webdav) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return nil, &os.PathError{Op: "ReadStreamRange", Path: key, Err: err}
 }
 
-func (w *webdav) Put(key string, in io.Reader) error {
+func (w *webdav) Put(_ context.Context, key string, in io.Reader) error {
 	if key == "" {
 		return nil
 	}
@@ -139,7 +140,7 @@ func (w *webdav) Put(key string, in io.Reader) error {
 	return w.c.WriteStream(key, in, 0)
 }
 
-func (w *webdav) Delete(key string) error {
+func (w *webdav) Delete(_ context.Context, key string) error {
 	info, err := w.c.Stat(key)
 	if gowebdav.IsErrNotFound(err) {
 		return nil

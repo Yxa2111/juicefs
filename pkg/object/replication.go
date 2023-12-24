@@ -32,6 +32,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"context"
 
 	"github.com/juicedata/juicefs/pkg/meta"
 	"github.com/juicedata/juicefs/pkg/utils"
@@ -453,7 +454,7 @@ func (r *ReplicaManager) run() {
 					for _, slave := range r.slave {
 						for {
 							logger.Infof("put key %v to slave %v value size %v", entry.key, slave.String(), info.Size())
-							err = utils.WithTimeout(func() error { return slave.Put(entry.key, bytes.NewReader(buf)) }, 60*time.Second)
+							err = utils.WithTimeout(func() error { return slave.Put(context.Background(), entry.key, bytes.NewReader(buf)) }, 60*time.Second)
 							if err != nil {
 								logger.Errorf("Failed to put key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
 								time.Sleep(5 * time.Second)
@@ -487,7 +488,7 @@ func (r *ReplicaManager) run() {
 					for _, slave := range r.slave {
 						for {
 							logger.Infof("delete key %v to slave %v", entry.key, slave.String())
-							err := utils.WithTimeout(func() error { return slave.Delete(entry.key) }, 60*time.Second)
+							err := utils.WithTimeout(func() error { return slave.Delete(context.Background(), entry.key) }, 60*time.Second)
 							if err != nil {
 								logger.Errorf("Failed to delete key %v in log file %v to slave %v, error is %v, retry later", entry.key, f.String(), slave.String(), err)
 								time.Sleep(5 * time.Second)
@@ -554,7 +555,7 @@ func (s *Replication) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return s.primary.Get(key, off, limit)
 }
 
-func (s *Replication) Put(key string, body io.Reader) error {
+func (s *Replication) Put(ctx context.Context, key string, body io.Reader) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 	// write to disk first
@@ -562,7 +563,7 @@ func (s *Replication) Put(key string, body io.Reader) error {
 	if err != nil {
 		return err
 	}
-	err = s.primary.Put(key, body)
+	err = s.primary.Put(ctx, key, body)
 	// todo: add txn id and waiting queue to reduce lock...
 	if err != nil {
 		// todo: add log rollback logic in later...
@@ -572,14 +573,14 @@ func (s *Replication) Put(key string, body io.Reader) error {
 	return nil
 }
 
-func (s *Replication) Delete(key string) error {
+func (s *Replication) Delete(ctx context.Context, key string) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 	cb, err := s.replica.log.Delete(key)
 	if err != nil {
 		return err
 	}
-	err = s.primary.Delete(key)
+	err = s.primary.Delete(ctx, key)
 	if err != nil {
 		return err
 	}

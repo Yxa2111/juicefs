@@ -17,6 +17,7 @@ package sync
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -39,10 +40,10 @@ func collectAll(c <-chan object.Object) []string {
 // nolint:errcheck
 func TestIterator(t *testing.T) {
 	m, _ := object.CreateStorage("mem", "", "", "", "")
-	m.Put("a", bytes.NewReader([]byte("a")))
-	m.Put("b", bytes.NewReader([]byte("a")))
-	m.Put("aa", bytes.NewReader([]byte("a")))
-	m.Put("c", bytes.NewReader([]byte("a")))
+	m.Put(context.Background(), "a", bytes.NewReader([]byte("a")))
+	m.Put(context.Background(), "b", bytes.NewReader([]byte("a")))
+	m.Put(context.Background(), "aa", bytes.NewReader([]byte("a")))
+	m.Put(context.Background(), "c", bytes.NewReader([]byte("a")))
 
 	ch, _ := ListAll(m, "a", "b")
 	keys := collectAll(ch)
@@ -55,7 +56,7 @@ func TestIterator(t *testing.T) {
 
 	// Single object
 	s, _ := object.CreateStorage("mem", "", "", "", "")
-	s.Put("a", bytes.NewReader([]byte("a")))
+	s.Put(context.Background(), "a", bytes.NewReader([]byte("a")))
 	ch, _ = ListAll(s, "", "")
 	keys = collectAll(ch)
 	if !reflect.DeepEqual(keys, []string{"a"}) {
@@ -68,7 +69,7 @@ func TestIeratorSingleEmptyKey(t *testing.T) {
 
 	// Construct mem storage
 	s, _ := object.CreateStorage("mem", "", "", "", "")
-	err := s.Put("abc", bytes.NewReader([]byte("abc")))
+	err := s.Put(context.Background(), "abc", bytes.NewReader([]byte("abc")))
 	if err != nil {
 		t.Fatalf("Put error: %q", err)
 	}
@@ -110,15 +111,15 @@ func TestSync(t *testing.T) {
 	}
 	os.Args = []string{"--include", "a[1-9]", "--exclude", "a*", "--exclude", "c*"}
 	a, _ := object.CreateStorage("file", "/tmp/a/", "", "", "")
-	a.Put("a1", bytes.NewReader([]byte("a1")))
-	a.Put("a2", bytes.NewReader([]byte("a2")))
-	a.Put("abc", bytes.NewReader([]byte("abc")))
-	a.Put("c1", bytes.NewReader([]byte("c1")))
-	a.Put("c2", bytes.NewReader([]byte("c2")))
+	a.Put(context.Background(), "a1", bytes.NewReader([]byte("a1")))
+	a.Put(context.Background(), "a2", bytes.NewReader([]byte("a2")))
+	a.Put(context.Background(), "abc", bytes.NewReader([]byte("abc")))
+	a.Put(context.Background(), "c1", bytes.NewReader([]byte("c1")))
+	a.Put(context.Background(), "c2", bytes.NewReader([]byte("c2")))
 
 	b, _ := object.CreateStorage("file", "/tmp/b/", "", "", "")
-	b.Put("a1", bytes.NewReader([]byte("a1")))
-	b.Put("ba", bytes.NewReader([]byte("a1")))
+	b.Put(context.Background(), "a1", bytes.NewReader([]byte("a1")))
+	b.Put(context.Background(), "ba", bytes.NewReader([]byte("a1")))
 
 	// Copy a2
 	if err := Sync(a, b, config); err != nil {
@@ -242,7 +243,7 @@ func TestSyncIncludeAndExclude(t *testing.T) {
 		_ = os.RemoveAll("/tmp/b/")
 		os.Args = testCase.args
 		for _, k := range testCase.srcKey {
-			a.Put(k, bytes.NewReader([]byte(k)))
+			a.Put(context.Background(), k, bytes.NewReader([]byte(k)))
 		}
 		if err := Sync(a, b, config); err != nil {
 			t.Fatalf("sync: %s", err)
@@ -311,7 +312,7 @@ func TestSyncLink(t *testing.T) {
 	}()
 
 	a, _ := object.CreateStorage("file", "/tmp/a/", "", "", "")
-	a.Put("a1", bytes.NewReader([]byte("test")))
+	a.Put(context.Background(), "a1", bytes.NewReader([]byte("test")))
 	as := a.(object.SupportSymlink)
 	as.Symlink("/tmp/a/a1", "l1")
 	as.Symlink("./../a1", "d1/l2")
@@ -370,7 +371,7 @@ func TestSyncLinkWithOutFollow(t *testing.T) {
 	}()
 
 	a, _ := object.CreateStorage("file", "/tmp/a/", "", "", "")
-	a.Put("a1", bytes.NewReader([]byte("test")))
+	a.Put(context.Background(), "a1", bytes.NewReader([]byte("test")))
 	as := a.(object.SupportSymlink)
 	as.Symlink("/tmp/a/a1", "l1")
 	as.Symlink("./../notExist", "l3")
@@ -445,7 +446,7 @@ func TestLimits(t *testing.T) {
 	put := func(storage object.ObjectStorage, keys []string) {
 		for _, key := range keys {
 			if key != "" {
-				_ = storage.Put(key, bytes.NewReader([]byte{}))
+				_ = storage.Put(context.Background(), key, bytes.NewReader([]byte{}))
 			}
 		}
 	}

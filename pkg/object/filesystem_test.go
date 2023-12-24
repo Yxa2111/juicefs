@@ -18,6 +18,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -77,7 +78,7 @@ func testFileSystem(t *testing.T, s ObjectStorage) {
 	}
 	// initialize directory tree
 	for _, key := range keys {
-		if err := s.Put(key, bytes.NewReader([]byte{})); err != nil {
+		if err := s.Put(context.Background(), key, bytes.NewReader([]byte{})); err != nil {
 			t.Fatalf("PUT object `%s` failed: %q", key, err)
 		}
 	}
@@ -101,7 +102,7 @@ func testFileSystem(t *testing.T, s ObjectStorage) {
 		}
 		idx := len(gottenKeys) - 1
 		for ; idx >= 0; idx-- {
-			if err := s.Delete(gottenKeys[idx]); err != nil {
+			if err := s.Delete(context.Background(), gottenKeys[idx]); err != nil {
 				t.Fatalf("DELETE object `%s` failed: %q", gottenKeys[idx], err)
 			}
 		}
@@ -135,11 +136,11 @@ func testFileSystem(t *testing.T, s ObjectStorage) {
 
 	if ss, ok := s.(SupportSymlink); ok {
 		// a< a- < a/ < a0    <    b< b- < b/ < b0
-		_ = s.Put("a-", bytes.NewReader([]byte{}))
-		_ = s.Put("a0", bytes.NewReader([]byte{}))
-		_ = s.Put("b-", bytes.NewReader([]byte{}))
-		_ = s.Put("b0", bytes.NewReader(make([]byte, 10)))
-		_ = s.Put("xyz/ol1/p.txt", bytes.NewReader([]byte{}))
+		_ = s.Put(context.Background(), "a-", bytes.NewReader([]byte{}))
+		_ = s.Put(context.Background(), "a0", bytes.NewReader([]byte{}))
+		_ = s.Put(context.Background(), "b-", bytes.NewReader([]byte{}))
+		_ = s.Put(context.Background(), "b0", bytes.NewReader(make([]byte, 10)))
+		_ = s.Put(context.Background(), "xyz/ol1/p.txt", bytes.NewReader([]byte{}))
 
 		err = ss.Symlink("../b0", "bb/b1")
 		if err != nil {

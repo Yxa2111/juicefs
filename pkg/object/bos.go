@@ -20,6 +20,7 @@
 package object
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -86,7 +87,7 @@ func (q *bosclient) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return r.Body, nil
 }
 
-func (q *bosclient) Put(key string, in io.Reader) error {
+func (q *bosclient) Put(_ context.Context, key string, in io.Reader) error {
 	b, vlen, err := findLen(in)
 	if err != nil {
 		return err
@@ -104,7 +105,7 @@ func (q *bosclient) Copy(dst, src string) error {
 	return err
 }
 
-func (q *bosclient) Delete(key string) error {
+func (q *bosclient) Delete(_ context.Context, key string) error {
 	err := q.c.DeleteObject(q.bucket, key)
 	if err != nil && strings.Contains(err.Error(), "NoSuchKey") {
 		err = nil

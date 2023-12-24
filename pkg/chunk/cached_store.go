@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/juicedata/juicefs/pkg/compress"
+	"github.com/juicedata/juicefs/pkg/meta"
 	"github.com/juicedata/juicefs/pkg/object"
 	"github.com/juicedata/juicefs/pkg/utils"
 	"github.com/juju/ratelimit"
@@ -277,13 +278,15 @@ type wSlice struct {
 	errors      chan error
 	uploadError error
 	pendings    int
+	replica		*meta.ReplicateInfo
 }
 
-func sliceForWrite(id uint64, store *cachedStore) *wSlice {
+func sliceForWrite(id uint64, store *cachedStore, r *meta.ReplicateInfo) *wSlice {
 	return &wSlice{
 		rSlice: rSlice{id, 0, store},
 		pages:  make([][]*Page, chunkSize/store.conf.BlockSize),
 		errors: make(chan error, chunkSize/store.conf.BlockSize),
+		replica: r,
 	}
 }
 
@@ -891,12 +894,12 @@ func (store *cachedStore) uploader() {
 	}
 }
 
-func (store *cachedStore) NewReader(id uint64, length int) Reader {
+func (store *cachedStore) NewReader(id uint64, length int, r *meta.ReplicateInfo) Reader {
 	return sliceForRead(id, length, store)
 }
 
-func (store *cachedStore) NewWriter(id uint64) Writer {
-	return sliceForWrite(id, store)
+func (store *cachedStore) NewWriter(id uint64, r* meta.ReplicateInfo) Writer {
+	return sliceForWrite(id, store, r)
 }
 
 func (store *cachedStore) Remove(id uint64, length int) error {

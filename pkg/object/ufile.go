@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha1"
 	"encoding/base64"
@@ -153,7 +154,7 @@ func copyObj(store ObjectStorage, dst, src string) error {
 	if err != nil {
 		return err
 	}
-	return store.Put(dst, bytes.NewReader(d))
+	return store.Put(context.Background(), dst, bytes.NewReader(d))
 }
 
 func (u *ufile) Copy(dst, src string) error {

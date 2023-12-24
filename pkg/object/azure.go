@@ -20,6 +20,7 @@
 package object
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -74,7 +75,7 @@ func (b *wasb) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return download.BlobDownloadResponse.RawResponse.Body, err
 }
 
-func (b *wasb) Put(key string, data io.Reader) error {
+func (b *wasb) Put(_ context.Context, key string, data io.Reader) error {
 	_, err := b.container.NewBlockBlobClient(key).UploadStreamToBlockBlob(ctx, data, azblob.UploadStreamToBlockBlobOptions{})
 	return err
 }
@@ -85,7 +86,7 @@ func (b *wasb) Copy(dst, src string) error {
 	return err
 }
 
-func (b *wasb) Delete(key string) error {
+func (b *wasb) Delete(_ context.Context, key string) error {
 	_, err := b.container.NewBlockBlobClient(key).Delete(ctx, &azblob.DeleteBlobOptions{})
 	if err != nil && strings.Contains(err.Error(), string(azblob.StorageErrorCodeBlobNotFound)) {
 		err = nil

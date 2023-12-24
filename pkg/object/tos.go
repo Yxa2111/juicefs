@@ -68,7 +68,7 @@ func (t tosClient) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return resp.Content, nil
 }
 
-func (t tosClient) Put(key string, in io.Reader) error {
+func (t tosClient) Put(_ context.Context, key string, in io.Reader) error {
 	_, err := t.client.PutObjectV2(context.Background(), &tos.PutObjectV2Input{
 		PutObjectBasicInput: tos.PutObjectBasicInput{
 			Bucket: t.bucket,
@@ -79,7 +79,7 @@ func (t tosClient) Put(key string, in io.Reader) error {
 	return err
 }
 
-func (t tosClient) Delete(key string) error {
+func (t tosClient) Delete(_ context.Context, key string) error {
 	_, err := t.client.DeleteObjectV2(context.Background(), &tos.DeleteObjectV2Input{
 		Bucket: t.bucket,
 		Key:    key,

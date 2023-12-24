@@ -64,7 +64,7 @@ func (t *tikv) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return ioutil.NopCloser(bytes.NewBuffer(data)), nil
 }
 
-func (t *tikv) Put(key string, in io.Reader) error {
+func (t *tikv) Put(_ context.Context, key string, in io.Reader) error {
 	d, err := ioutil.ReadAll(in)
 	if err != nil {
 		return err
@@ -85,7 +85,7 @@ func (t *tikv) Head(key string) (Object, error) {
 	}, err
 }
 
-func (t *tikv) Delete(key string) error {
+func (t *tikv) Delete(_ context.Context, key string) error {
 	return t.c.Delete(context.TODO(), []byte(key))
 }
 

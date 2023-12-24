@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -77,7 +78,7 @@ func (s *sqlStore) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return ioutil.NopCloser(bytes.NewBuffer(data)), nil
 }
 
-func (s *sqlStore) Put(key string, in io.Reader) error {
+func (s *sqlStore) Put(_ context.Context, key string, in io.Reader) error {
 	d, err := ioutil.ReadAll(in)
 	if err != nil {
 		return err
@@ -121,7 +122,7 @@ func (s *sqlStore) Head(key string) (Object, error) {
 	}, nil
 }
 
-func (s *sqlStore) Delete(key string) error {
+func (s *sqlStore) Delete(_ context.Context, key string) error {
 	_, err := s.db.Delete(&blob{Key: key})
 	return err
 }

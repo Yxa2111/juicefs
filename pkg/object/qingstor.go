@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -119,7 +120,7 @@ func findLen(in io.Reader) (io.Reader, int64, error) {
 	return in, vlen, nil
 }
 
-func (q *qingstor) Put(key string, in io.Reader) error {
+func (q *qingstor) Put(_ context.Context, key string, in io.Reader) error {
 	body, vlen, err := findLen(in)
 	if err != nil {
 		return err
@@ -155,7 +156,7 @@ func (q *qingstor) Copy(dst, src string) error {
 	return nil
 }
 
-func (q *qingstor) Delete(key string) error {
+func (q *qingstor) Delete(_ context.Context, key string) error {
 	_, err := q.bucket.DeleteObject(key)
 	return err
 }

@@ -20,6 +20,7 @@
 package object
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -61,13 +62,13 @@ func (s *swiftOSS) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return f, err
 }
 
-func (s *swiftOSS) Put(key string, in io.Reader) error {
+func (s *swiftOSS) Put(_ context.Context, key string, in io.Reader) error {
 	mimeType := utils.GuessMimeType(key)
 	_, err := s.conn.ObjectPut(s.container, key, in, true, "", mimeType, nil)
 	return err
 }
 
-func (s *swiftOSS) Delete(key string) error {
+func (s *swiftOSS) Delete(_ context.Context, key string) error {
 	err := s.conn.ObjectDelete(s.container, key)
 	if err != nil && errors.Is(err, swift.ObjectNotFound) {
 		err = nil

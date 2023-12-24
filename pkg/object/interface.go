@@ -19,6 +19,7 @@ package object
 import (
 	"io"
 	"time"
+	"context"
 )
 
 type Object interface {
@@ -70,9 +71,9 @@ type ObjectStorage interface {
 	// Get the data for the given object specified by key.
 	Get(key string, off, limit int64) (io.ReadCloser, error)
 	// Put data read from a reader to an object specified by key.
-	Put(key string, in io.Reader) error
+	Put(ctx context.Context, key string, in io.Reader) error
 	// Delete a object.
-	Delete(key string) error
+	Delete(ctx context.Context, key string) error
 
 	// Head returns some information about the object or an error if not found.
 	Head(key string) (Object, error)

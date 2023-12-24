@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -91,7 +92,7 @@ func (s *nos) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (s *nos) Put(key string, in io.Reader) error {
+func (s *nos) Put(_ context.Context, key string, in io.Reader) error {
 	var body io.ReadSeeker
 	switch body.(type) {
 	case io.ReadSeeker:
@@ -122,7 +123,7 @@ func (s *nos) Copy(dst, src string) error {
 	return s.client.CopyObject(params)
 }
 
-func (s *nos) Delete(key string) error {
+func (s *nos) Delete(_ context.Context, key string) error {
 	param := model.ObjectRequest{
 		Bucket: s.bucket,
 		Object: key,

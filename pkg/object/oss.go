@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -111,7 +112,7 @@ func (o *ossClient) Get(key string, off, limit int64) (resp io.ReadCloser, err e
 	return
 }
 
-func (o *ossClient) Put(key string, in io.Reader) error {
+func (o *ossClient) Put(_ context.Context, key string, in io.Reader) error {
 	if ins, ok := in.(io.ReadSeeker); ok {
 		option := oss.Meta(checksumAlgr, generateChecksum(ins))
 		return o.checkError(o.bucket.PutObject(key, in, option))
@@ -124,7 +125,7 @@ func (o *ossClient) Copy(dst, src string) error {
 	return o.checkError(err)
 }
 
-func (o *ossClient) Delete(key string) error {
+func (o *ossClient) Delete(_ context.Context, key string) error {
 	return o.checkError(o.bucket.DeleteObject(key))
 }
 

@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -81,11 +82,11 @@ func (s *scsClient) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return s.b.Get(key, "")
 }
 
-func (s *scsClient) Put(key string, in io.Reader) error {
+func (s *scsClient) Put(_ context.Context, key string, in io.Reader) error {
 	return s.b.Put(key, map[string]string{}, in)
 }
 
-func (s *scsClient) Delete(key string) error {
+func (s *scsClient) Delete(_ context.Context, key string) error {
 	return s.b.Delete(key)
 }
 

@@ -8,6 +8,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -202,7 +203,7 @@ func (f *sftpStore) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return ff, err
 }
 
-func (f *sftpStore) Put(key string, in io.Reader) error {
+func (f *sftpStore) Put(_ context.Context, key string, in io.Reader) error {
 	c, err := f.getSftpConnection()
 	if err != nil {
 		return err
@@ -294,7 +295,7 @@ func (f *sftpStore) Readlink(name string) (string, error) {
 	return c.sftpClient.ReadLink(f.path(name))
 }
 
-func (f *sftpStore) Delete(key string) error {
+func (f *sftpStore) Delete(_ context.Context, key string) error {
 	c, err := f.getSftpConnection()
 	if err != nil {
 		return err

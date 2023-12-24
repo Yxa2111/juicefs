@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -93,7 +94,7 @@ func (c *COS) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (c *COS) Put(key string, in io.Reader) error {
+func (c *COS) Put(_ context.Context, key string, in io.Reader) error {
 	var options *cos.ObjectPutOptions
 	if ins, ok := in.(io.ReadSeeker); ok {
 		header := http.Header(map[string][]string{
@@ -111,7 +112,7 @@ func (c *COS) Copy(dst, src string) error {
 	return err
 }
 
-func (c *COS) Delete(key string) error {
+func (c *COS) Delete(_ context.Context, key string) error {
 	_, err := c.c.Object.Delete(ctx, key)
 	return err
 }

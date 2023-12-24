@@ -77,13 +77,13 @@ func testStorage(t *testing.T, s ObjectStorage) {
 	}
 	s = WithPrefix(s, "unit-test/")
 	defer func() {
-		if err := s.Delete("test"); err != nil {
+		if err := s.Delete(context.Background(), "test"); err != nil {
 			t.Fatalf("delete failed: %s", err)
 		}
 	}()
 
 	key := "测试编码文件" + `{"name":"zhijian"}` + string('\u001F')
-	if err := s.Put(key, bytes.NewReader(nil)); err != nil {
+	if err := s.Put(context.Background(), key, bytes.NewReader(nil)); err != nil {
 		t.Logf("PUT testEncodeFile failed: %s", err.Error())
 	} else {
 		if resp, err := s.List("", "测试编码文件", 1); err != nil && err != notSupported {
@@ -92,10 +92,10 @@ func testStorage(t *testing.T, s ObjectStorage) {
 			t.Logf("List testEncodeFile Failed: expect key %s, but got %s", key, resp[0].Key())
 		}
 	}
-	_ = s.Delete(key)
+	_ = s.Delete(context.Background(), key)
 
 	k := "large"
-	defer s.Delete(k)
+	defer s.Delete(context.Background(), k)
 
 	_, err := s.Get("not_exists", 0, -1)
 	if err == nil {
@@ -103,7 +103,7 @@ func testStorage(t *testing.T, s ObjectStorage) {
 	}
 
 	br := []byte("hello")
-	if err := s.Put("test", bytes.NewReader(br)); err != nil {
+	if err := s.Put(context.Background(), "test", bytes.NewReader(br)); err != nil {
 		t.Fatalf("PUT failed: %s", err.Error())
 	}
 
@@ -205,14 +205,14 @@ func testStorage(t *testing.T, s ObjectStorage) {
 	for i := 0; i < keyTotal; i++ {
 		k := fmt.Sprintf("hashKey%d", i)
 		sortedKeys = append(sortedKeys, k)
-		if err := s.Put(k, bytes.NewReader(br)); err != nil {
+		if err := s.Put(context.Background(), k, bytes.NewReader(br)); err != nil {
 			t.Fatalf("PUT failed: %s", err.Error())
 		}
 	}
 	sort.Strings(sortedKeys)
 	defer func() {
 		for i := 0; i < keyTotal; i++ {
-			_ = s.Delete(fmt.Sprintf("hashKey%d", i))
+			_ = s.Delete(context.Background(), fmt.Sprintf("hashKey%d", i))
 		}
 	}()
 	objs, err := listAll(s, "hashKey", "", int64(keyTotal))
@@ -231,12 +231,12 @@ func testStorage(t *testing.T, s ObjectStorage) {
 	f.Seek(0, 0)
 	os.Remove(f.Name())
 	defer f.Close()
-	if err := s.Put("file", f); err != nil {
+	if err := s.Put(context.Background(), "file", f); err != nil {
 		t.Fatalf("failed to put from file")
 	} else if _, err := s.Head("file"); err != nil {
 		t.Fatalf("file should exists")
 	} else {
-		if err := s.Delete("file"); err != nil {
+		if err := s.Delete(context.Background(), "file"); err != nil {
 			t.Fatalf("delete failed %s", err)
 		}
 	}
@@ -249,11 +249,11 @@ func testStorage(t *testing.T, s ObjectStorage) {
 		t.Fatalf("check exists failed: %s", err.Error())
 	}
 
-	if err := s.Delete("test"); err != nil {
+	if err := s.Delete(context.Background(), "test"); err != nil {
 		t.Fatalf("delete failed: %s", err)
 	}
 
-	if err := s.Delete("test"); err != nil {
+	if err := s.Delete(context.Background(), "test"); err != nil {
 		t.Fatalf("delete non exists: %v", err)
 	}
 
@@ -298,22 +298,22 @@ func testStorage(t *testing.T, s ObjectStorage) {
 
 	// Copy empty objects
 	defer func() {
-		if err := s.Delete("empty"); err != nil {
+		if err := s.Delete(context.Background(), "empty"); err != nil {
 			t.Logf("delete empty file failed: %s", err)
 		}
 	}()
 
-	if err := s.Put("empty", bytes.NewReader([]byte{})); err != nil {
+	if err := s.Put(context.Background(), "empty", bytes.NewReader([]byte{})); err != nil {
 		t.Logf("PUT empty object failed: %s", err.Error())
 	}
 
 	// Copy `/` suffixed object
 	defer func() {
-		if err := s.Delete("slash/"); err != nil {
+		if err := s.Delete(context.Background(), "slash/"); err != nil {
 			t.Logf("delete slash/ failed %s", err)
 		}
 	}()
-	if err := s.Put("slash/", bytes.NewReader([]byte{})); err != nil {
+	if err := s.Put(context.Background(), "slash/", bytes.NewReader([]byte{})); err != nil {
 		t.Logf("PUT `/` suffixed object failed: %s", err.Error())
 	}
 }
@@ -626,7 +626,7 @@ func TestMarsharl(t *testing.T) {
 		t.SkipNow()
 	}
 	s, _ := newHDFS(os.Getenv("HDFS_ADDR"), "", "", "")
-	if err := s.Put("hello", bytes.NewReader([]byte("world"))); err != nil {
+	if err := s.Put(context.Background(), "hello", bytes.NewReader([]byte("world"))); err != nil {
 		t.Fatalf("PUT failed: %s", err)
 	}
 	fs := s.(FileSystem)

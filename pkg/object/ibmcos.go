@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -74,7 +75,7 @@ func (s *ibmcos) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (s *ibmcos) Put(key string, in io.Reader) error {
+func (s *ibmcos) Put(_ context.Context, key string, in io.Reader) error {
 	var body io.ReadSeeker
 	if b, ok := in.(io.ReadSeeker); ok {
 		body = b
@@ -127,7 +128,7 @@ func (s *ibmcos) Head(key string) (Object, error) {
 	}, nil
 }
 
-func (s *ibmcos) Delete(key string) error {
+func (s *ibmcos) Delete(_ context.Context, key string) error {
 	param := s3.DeleteObjectInput{
 		Bucket: &s.bucket,
 		Key:    &key,

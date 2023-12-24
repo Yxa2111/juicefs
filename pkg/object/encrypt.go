@@ -30,6 +30,7 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
+	"context"
 
 	"github.com/youmark/pkcs8"
 )
@@ -242,7 +243,7 @@ func (e *encrypted) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return ioutil.NopCloser(bytes.NewBuffer(data)), nil
 }
 
-func (e *encrypted) Put(key string, in io.Reader) error {
+func (e *encrypted) Put(c context.Context, key string, in io.Reader) error {
 	plain, err := ioutil.ReadAll(in)
 	if err != nil {
 		return err
@@ -251,7 +252,7 @@ func (e *encrypted) Put(key string, in io.Reader) error {
 	if err != nil {
 		return err
 	}
-	return e.ObjectStorage.Put(key, bytes.NewReader(ciphertext))
+	return e.ObjectStorage.Put(c, key, bytes.NewReader(ciphertext))
 }
 
 var _ ObjectStorage = &encrypted{}

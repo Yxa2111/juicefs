@@ -18,6 +18,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -95,7 +96,7 @@ func (m *memStore) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return ioutil.NopCloser(bytes.NewBuffer(data)), nil
 }
 
-func (m *memStore) Put(key string, in io.Reader) error {
+func (m *memStore) Put(_ context.Context, key string, in io.Reader) error {
 	m.Lock()
 	defer m.Unlock()
 	// Minimum length is 1.
@@ -119,10 +120,10 @@ func (m *memStore) Copy(dst, src string) error {
 	if err != nil {
 		return err
 	}
-	return m.Put(dst, d)
+	return m.Put(context.Background(), dst, d)
 }
 
-func (m *memStore) Delete(key string) error {
+func (m *memStore) Delete(_ context.Context, key string) error {
 	m.Lock()
 	defer m.Unlock()
 	delete(m.objects, key)

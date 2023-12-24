@@ -18,6 +18,7 @@ package object
 
 import (
 	"container/heap"
+	"context"
 	"errors"
 	"fmt"
 	"hash/fnv"
@@ -59,12 +60,12 @@ func (s *sharded) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return s.pick(key).Get(key, off, limit)
 }
 
-func (s *sharded) Put(key string, body io.Reader) error {
-	return s.pick(key).Put(key, body)
+func (s *sharded) Put(c context.Context, key string, body io.Reader) error {
+	return s.pick(key).Put(c, key, body)
 }
 
-func (s *sharded) Delete(key string) error {
-	return s.pick(key).Delete(key)
+func (s *sharded) Delete(c context.Context, key string) error {
+	return s.pick(key).Delete(c, key)
 }
 
 const maxResults = 10000

@@ -18,6 +18,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -132,7 +133,7 @@ func (d *filestore) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return f, nil
 }
 
-func (d *filestore) Put(key string, in io.Reader) error {
+func (d *filestore) Put(_ context.Context, key string, in io.Reader) error {
 	p := d.path(key)
 
 	if strings.HasSuffix(key, dirSuffix) || key == "" && strings.HasSuffix(d.root, dirSuffix) {
@@ -181,10 +182,10 @@ func (d *filestore) Copy(dst, src string) error {
 		return err
 	}
 	defer r.Close()
-	return d.Put(dst, r)
+	return d.Put(context.Background(), dst, r)
 }
 
-func (d *filestore) Delete(key string) error {
+func (d *filestore) Delete(_ context.Context, key string) error {
 	err := os.Remove(d.path(key))
 	if err != nil && os.IsNotExist(err) {
 		err = nil

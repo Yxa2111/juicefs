@@ -112,7 +112,7 @@ func (g *gs) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return reader, nil
 }
 
-func (g *gs) Put(key string, data io.Reader) error {
+func (g *gs) Put(_ context.Context, key string, data io.Reader) error {
 	writer := g.client.Bucket(g.bucket).Object(key).NewWriter(ctx)
 	_, err := io.Copy(writer, data)
 	if err != nil {
@@ -128,7 +128,7 @@ func (g *gs) Copy(dst, src string) error {
 	return err
 }
 
-func (g *gs) Delete(key string) error {
+func (g *gs) Delete(_ context.Context, key string) error {
 	if err := g.client.Bucket(g.bucket).Object(key).Delete(ctx); err != storage.ErrObjectNotExist {
 		return err
 	}

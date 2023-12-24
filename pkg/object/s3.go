@@ -21,6 +21,7 @@ package object
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -123,7 +124,7 @@ func (s *s3client) Get(key string, off, limit int64) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (s *s3client) Put(key string, in io.Reader) error {
+func (s *s3client) Put(_ context.Context, key string, in io.Reader) error {
 	var body io.ReadSeeker
 	if b, ok := in.(io.ReadSeeker); ok {
 		body = b
@@ -158,7 +159,7 @@ func (s *s3client) Copy(dst, src string) error {
 	return err
 }
 
-func (s *s3client) Delete(key string) error {
+func (s *s3client) Delete(_ context.Context, key string) error {
 	param := s3.DeleteObjectInput{
 		Bucket: &s.bucket,
 		Key:    &key,

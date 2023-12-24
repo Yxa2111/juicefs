@@ -22,6 +22,7 @@ import (
 	"os"
 	"sort"
 	"time"
+	"context"
 
 	"github.com/juicedata/juicefs/pkg/meta"
 	"github.com/juicedata/juicefs/pkg/object"
@@ -91,7 +92,7 @@ func backup(m meta.Meta, blob object.ObjectStorage, now time.Time) error {
 	if _, err = fp.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	return blob.Put("meta/"+name, fp)
+	return blob.Put(context.Background(), "meta/"+name, fp)
 }
 
 func cleanupBackups(blob object.ObjectStorage, now time.Time) {
@@ -114,7 +115,7 @@ func cleanupBackups(blob object.ObjectStorage, now time.Time) {
 
 	toDel := rotate(objs, now)
 	for _, o := range toDel {
-		if err = blob.Delete(o); err != nil {
+		if err = blob.Delete(context.Background(), o); err != nil {
 			logger.Warnf("delete object %s: %s", o, err)
 		}
 	}

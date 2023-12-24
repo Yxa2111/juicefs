@@ -52,6 +52,9 @@ type handle struct {
 	data    []byte
 	pending []byte
 	bctx    meta.Context
+
+	// replica
+	replica ReplicateXattr
 }
 
 func (h *handle) Write(buf []byte) (int, error) {
@@ -199,7 +202,7 @@ func (v *VFS) releaseHandle(inode Ino, fh uint64) {
 	}
 }
 
-func (v *VFS) newFileHandle(inode Ino, length uint64, flags uint32) uint64 {
+func (v *VFS) newFileHandle(inode Ino, length uint64, flags uint32, r *ReplicateXattr) uint64 {
 	h := v.newHandle(inode)
 	h.Lock()
 	defer h.Unlock()
@@ -211,6 +214,9 @@ func (v *VFS) newFileHandle(inode Ino, length uint64, flags uint32) uint64 {
 	case syscall.O_RDWR:
 		h.reader = v.reader.Open(inode, length)
 		h.writer = v.writer.Open(inode, length)
+	}
+	if r != nil {
+		h.replica = *r
 	}
 	return h.fh
 }
